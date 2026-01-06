@@ -4,7 +4,7 @@ python-multipart==0.0.12
 pydantic==2.10.3
 pydantic-settings==2.6.1
 sqlmodel==0.0.22
-psycopg[binary]==3.2.3
+psycopg2-binary==2.9.10
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-jose==3.3.0
