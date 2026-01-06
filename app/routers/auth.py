@@ -1,0 +1,200 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
+from sqlmodel import Session, select, func
+from datetime import datetime
+import uuid
+
+from ..db import get_session
+from ..config import settings
+from ..security import verify_password, hash_password, create_access_token, decode_token
+from ..models import User, Role, Organization
+from ..deps import get_current_user
+from ..schemas import LoginRequest, LoginResponse, SignupRequest, MeResponse, OnboardingRequest
+from ..utils import audit
+from ..google_auth import get_google_auth_url, get_google_user_info
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+@router.post("/login", response_model=LoginResponse)
+def login(payload: LoginRequest, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.email == payload.email)).first()
+    if not user or not user.is_active or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_access_token(subject=user.email, role=user.role.value)
+    audit(session, actor=user.email, action="login")
+    return LoginResponse(access_token=token)
+
+@router.post("/signup", response_model=LoginResponse)
+def signup(payload: SignupRequest, session: Session = Depends(get_session)):
+    if session.exec(select(User).where(User.email == payload.email)).first():
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    # 1. Create Organization
+    base_slug = payload.organization_name.lower().replace(" ", "-")
+    slug = f"{base_slug}-{int(datetime.utcnow().timestamp())}"
+    org_id = str(uuid.uuid4())
+    
+    org = Organization(
+        org_id=org_id,
+        name=payload.organization_name,
+        slug=slug,
+    )
+    session.add(org)
+    session.commit()
+    session.refresh(org)
+
+    # 2. Create User
+    user = User(
+        email=payload.email,
+        full_name=payload.full_name,
+        role=payload.role,
+        password_hash=hash_password(payload.password),
+        is_active=True,
+        org_id=org.org_id,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    token = create_access_token(subject=user.email, role=user.role.value)
+    audit(session, actor=user.email, action="signup", details={"role": user.role.value, "org_id": org.org_id})
+    return LoginResponse(access_token=token)
+
+@router.get("/me", response_model=MeResponse)
+def me(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    org = session.exec(select(Organization).where(Organization.org_id == user.org_id)).first()
+    
+    # Calculate usage
+    doc_count = 0
+    plan_name = "free"
+    max_docs = 3
+    
+    if org:
+        from ..pricing import PRICING_PLANS, DEFAULT_PLAN
+        from ..models import Document
+        
+        # Get count of non-deleted documents
+        doc_count = session.exec(
+            select(func.count()).select_from(Document)
+            .where(Document.org_id == user.org_id)
+            .where(Document.is_deleted == False) # noqa
+        ).one()
+        
+        plan_name = org.plan
+        if plan_name not in PRICING_PLANS:
+            plan_name = DEFAULT_PLAN.value
+            
+        max_docs = PRICING_PLANS[plan_name]["max_docs"]
+
+    return MeResponse(
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role,
+        org_id=user.org_id,
+        org_slug=org.slug if org else None,
+        plan=plan_name,
+        max_docs=max_docs,
+        doc_count=doc_count
+    )
+
+@router.get("/google/login")
+def google_login():
+    redirect_uri = settings.google_redirect_uri or f"{settings.cors_origin_list[0]}/auth/google/callback"
+    if not settings.google_redirect_uri:
+        pass
+
+    uri = settings.google_redirect_uri
+    if not uri:
+         raise HTTPException(status_code=500, detail="GOOGLE_REDIRECT_URI is not configured.")
+
+    auth_url = get_google_auth_url(uri)
+    return RedirectResponse(auth_url)
+
+
+@router.get("/google/callback")
+async def google_callback(code: str, session: Session = Depends(get_session)):
+    uri = settings.google_redirect_uri
+    if not uri:
+         raise HTTPException(status_code=500, detail="GOOGLE_REDIRECT_URI is not configured.")
+
+    try:
+        user_info = await get_google_user_info(code, uri)
+    except Exception as e:
+         raise HTTPException(status_code=400, detail=f"Google Auth failed: {str(e)}")
+
+    email = user_info.get("email")
+    name = user_info.get("name")
+    
+    if not email:
+        raise HTTPException(status_code=400, detail="No email provided by Google")
+
+    # Find or Create User
+    user = session.exec(select(User).where(User.email == email)).first()
+    if not user:
+        # User doesn't exist. Issue a temporary "onboarding" token.
+        token = create_access_token(subject=email, role="onboarding", expires_minutes=1440)
+        
+        encoded_name = (name or "").replace(" ", "+")
+        
+        # Redirect to Onboarding Page
+        frontend_onboarding = f"{settings.frontend_url}/onboarding?token={token}&name={encoded_name}"
+        return RedirectResponse(frontend_onboarding)
+
+    else:
+        audit(session, actor=email, action="login_google")
+        # Issue Standard Token
+        token = create_access_token(subject=user.email, role=user.role.value)
+        # Redirect to callback
+        frontend_redirect = f"{settings.frontend_url}/auth/callback?token={token}"
+        return RedirectResponse(frontend_redirect)
+
+@router.post("/google/onboarding", response_model=LoginResponse)
+def complete_google_onboarding(payload: OnboardingRequest, session: Session = Depends(get_session)):
+    # 1. Verify Token
+    print(f"DEBUG: Received Onboarding Token: {payload.token}")
+    try:
+        token_data = decode_token(payload.token)
+    except Exception as e:
+        print(f"DEBUG: Token decode failed in main: {e}")
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    
+    if token_data.role != "onboarding":
+        raise HTTPException(status_code=403, detail="Invalid token scope")
+
+    email = token_data.sub
+    if session.exec(select(User).where(User.email == email)).first():
+         raise HTTPException(status_code=409, detail="User already exists")
+
+    # 2. Create Organization
+    base_slug = payload.organization_name.lower().replace(" ", "-")
+    slug = f"{base_slug}-{int(datetime.utcnow().timestamp())}"
+    org_id = str(uuid.uuid4())
+    
+    org = Organization(
+        org_id=org_id,
+        name=payload.organization_name,
+        slug=slug,
+    )
+    session.add(org)
+    session.commit()
+    session.refresh(org)
+
+    # 3. Create User
+    user = User(
+        email=email,
+        full_name=email.split("@")[0], 
+        role=payload.role,
+        password_hash=hash_password(str(uuid.uuid4())),
+        is_active=True,
+        org_id=org.org_id,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    
+    audit(session, actor=email, action="signup_google_complete", details={"org_id": org.org_id})
+
+    # 4. Issue Final Token
+    final_token = create_access_token(subject=user.email, role=user.role.value)
+    return LoginResponse(access_token=final_token)
