@@ -29,9 +29,9 @@ app = FastAPI(title="KB RAG API", version="2.0.0")
 async def startup_event():
     # Initialize Qdrant collection and indexes on startup
     try:
-        from .embedding import get_model
-        model = get_model()
-        dim = model.get_sentence_embedding_dimension()
+        # Avoid loading the heavy ML model at startup to save memory on Render (Free Tier)
+        # 384 is the dimension for all-MiniLM-L6-v2
+        dim = 384 
         ensure_collection(vector_size=dim)
         print(f"INFO:    Qdrant collection '{settings.QDRANT_COLLECTION}' verified with dimension {dim}")
     except Exception as e:
