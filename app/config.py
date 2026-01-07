@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # ---------- CORS ----------
     cors_origins: str = Field(
-        default="http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:8000",
+        default="http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:8000,https://kb-frontend-plum.vercel.app,https://kb-backend-21p3.onrender.com",
         alias="CORS_ORIGINS",
     )
 
@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     google_redirect_uri: Optional[str] = Field(default=None, alias="GOOGLE_REDIRECT_URI")
 
     # ---------- Frontend ----------
-    frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
+    frontend_url: str = Field(default="http://localhost:3000,https://kb-frontend-plum.vercel.app", alias="FRONTEND_URL")
 
     # ---------- Seed flags ----------
     seed_default_users: bool = Field(default=True, alias="SEED_DEFAULT_USERS")
