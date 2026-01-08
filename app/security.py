@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -21,7 +21,7 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 def create_access_token(subject: str, role: str, expires_minutes: int = 60*24) -> str:
-    expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
     payload = {"sub": subject, "role": role, "exp": int(expire.timestamp())}
     return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
 

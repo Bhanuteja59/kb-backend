@@ -6,7 +6,7 @@ import uuid
 from ..db import get_session
 from ..models import User, Role, Document, Chunk, Organization
 from ..deps import get_current_user, require_roles
-from ..schemas import DocumentOut, DriveIngestRequest
+from ..schemas import DocumentOut, DriveIngestRequest, DocumentDetail, ChunkOut
 from ..utils import audit
 from ..text_extractors import extract_text
 from ..tokenizer_chunking import chunk_text_tokens
@@ -297,6 +297,54 @@ async def ingest_drive_file(
         deleted_by=doc.deleted_by,
     )
 
+@router.get("/documents/{doc_id}", response_model=DocumentDetail)
+def get_document_details(
+    doc_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    # 1. Fetch Document
+    doc = session.exec(
+        select(Document)
+        .where(Document.doc_id == doc_id)
+        .where(Document.org_id == user.org_id)
+    ).first()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # 2. Fetch Chunks
+    chunks = session.exec(
+        select(Chunk)
+        .where(Chunk.doc_id == doc_id)
+        .order_by(Chunk.chunk_index)
+    ).all()
+
+    return DocumentDetail(
+        document=DocumentOut(
+            doc_id=doc.doc_id,
+            filename=doc.filename,
+            file_type=doc.file_type,
+            source=doc.source,
+            size_bytes=doc.size_bytes,
+            uploaded_by=doc.uploaded_by,
+            created_at=doc.created_at.isoformat(),
+            status=doc.status,
+            error_message=doc.error_message,
+            is_deleted=doc.is_deleted,
+            deleted_at=doc.deleted_at.isoformat() if doc.deleted_at else None,
+            deleted_by=doc.deleted_by,
+        ),
+        chunks=[
+            ChunkOut(
+                chunk_id=c.chunk_id,
+                doc_id=c.doc_id,
+                chunk_index=c.chunk_index,
+                text=c.text
+            ) for c in chunks
+        ]
+    )
+
 @router.get("/documents", response_model=list[DocumentOut])
 def list_documents(
     include_deleted: bool = Query(default=False),
@@ -335,7 +383,11 @@ def soft_delete_document(
     session: Session = Depends(get_session),
     actor: User = Depends(get_current_user),
 ):
-    d = session.exec(select(Document).where(Document.doc_id == doc_id)).first()
+    d = session.exec(
+        select(Document)
+        .where(Document.doc_id == doc_id)
+        .where(Document.org_id == actor.org_id)
+    ).first()
     if not d:
         raise HTTPException(status_code=404, detail="Document not found")
 

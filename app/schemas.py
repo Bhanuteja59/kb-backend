@@ -15,6 +15,7 @@ class MeResponse(BaseModel):
     full_name: str
     role: Role
     org_id: Optional[str] = None
+    org_name: Optional[str] = None
     org_slug: Optional[str] = None
     plan: str = "free"
     max_docs: int = 3
@@ -32,6 +33,26 @@ class SignupRequest(BaseModel):
     password: str = Field(min_length=8)
     role: Role = Role.USER
     organization_name: str
+    verification_token: str
+
+class EmailRequest(BaseModel):
+    email: str
+
+class OtpRequest(BaseModel):
+    email: str
+    code: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8)
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
+
 
 class OnboardingRequest(BaseModel):
     token: str
@@ -43,6 +64,12 @@ class UserUpdate(BaseModel):
     role: Optional[Role] = None
     password: Optional[str] = Field(default=None, min_length=8)
     is_active: Optional[bool] = None
+
+class UserProfileUpdate(BaseModel):
+    full_name: str
+
+class OrgUpdate(BaseModel):
+    name: str
 
 class DocumentOut(BaseModel):
     doc_id: str
@@ -63,6 +90,10 @@ class ChunkOut(BaseModel):
     doc_id: str
     chunk_index: int
     text: str
+
+class DocumentDetail(BaseModel):
+    document: DocumentOut
+    chunks: List[ChunkOut]
 
 class QueryRequest(BaseModel):
     query: str

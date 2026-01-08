@@ -1,36 +1,38 @@
 from __future__ import annotations
 from typing import List
-from transformers import AutoTokenizer
-from .config import settings
-
-_tok = None
-
-def get_tokenizer():
-    global _tok
-    if _tok is None:
-        _tok = AutoTokenizer.from_pretrained(settings.tokenizer_model_name)
-    return _tok
 
 def chunk_text_tokens(text: str, chunk_tokens: int = 500, overlap_tokens: int = 80) -> List[str]:
+    """
+    Lightweight chunker that splits by words instead of tokens.
+    Approximation: 1 "token" ~= 1 word (simplification for speed).
+    """
     text = (text or "").strip()
     if not text:
         return []
 
-    tok = get_tokenizer()
-    ids = tok.encode(text, add_special_tokens=False)
-    if not ids:
+    words = text.split()
+    if not words:
         return []
 
     chunks = []
     start = 0
-    n = len(ids)
+    n = len(words)
+    
+    # If chunk_tokens is 500, we treat it as 400 words to be safe/conservative
+    # or just use it 1:1. Let's use it 1:1 for simplicity.
+    limit = chunk_tokens 
+    overlap = overlap_tokens
+
     while start < n:
-        end = min(n, start + chunk_tokens)
-        piece_ids = ids[start:end]
-        chunk = tok.decode(piece_ids, skip_special_tokens=True).strip()
+        end = min(n, start + limit)
+        chunk_words = words[start:end]
+        chunk = " ".join(chunk_words)
         if chunk:
             chunks.append(chunk)
+        
         if end == n:
             break
-        start = max(0, end - overlap_tokens)
+        
+        start = max(0, end - overlap)
+        
     return chunks

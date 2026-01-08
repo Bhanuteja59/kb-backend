@@ -33,10 +33,6 @@ async def generate_answer(question: str, contexts: List[Dict]) -> str:
     if settings.GROQ_API_KEY:
         return _groq_answer(question, contexts)
 
-    # ---------- Safe fallback (extractive) ----------
-    bullets = []
-    for c in contexts[:3]:
-        t = c["text"].strip().replace("\n", " ")
         bullets.append(
             f"- {t[:350]}{'…' if len(t) > 350 else ''} "
             f"(source: {c['filename']} #chunk {c['chunk_index']})"
@@ -48,17 +44,8 @@ async def generate_answer(question: str, contexts: List[Dict]) -> str:
 # ---------- Prompt builder ----------
 def _build_prompt(question: str, contexts: List[Dict]) -> str:
     blocks = []
-    for i, c in enumerate(contexts[:8], start=1):
-        blocks.append(
-            f"""[SOURCE {i}]
-Document: {c['filename']}
-DocId: {c['doc_id']}
-ChunkId: {c['chunk_id']}
-ChunkIndex: {c['chunk_index']}
-Content:
-{c['text']}
-"""
-        )
+    for i, c in enumerate(contexts[:5], 1): # Limit to 5 chunks
+        blocks.append(f"Content: {c['text']}")
 
     sources = "\n\n".join(blocks)
 
@@ -68,12 +55,11 @@ Question:
 {question}
 
 Instructions:
-1. **CRITICAL**: The "Context" provided below is your PRIMARY and MOST TRUSTED source of truth.
-2. **ALWAYS** check the Context first. If the answer exists in the Context, you MUST use it.
-3. **PRIORITY**: Information from the Context overrides your internal knowledge.
-4. Only if the Context is completely irrelevant or empty, you may use your general knowledge to answer.
-5. **NEVER** mention [SOURCE ID], [Source 1], etc. in your answer. Just provide the information naturally.
-6. Just give the answer.
+1. **Context Usage**: The "Context" below is from the user's knowledge base. Use it if relevant.
+2. **Fallback**: If the Context matches the question, use it to answer.
+3. **General Knowledge**: If the Context is NOT relevant or doesn't answer the question, **IGNORE the Context** and answer using your own general knowledge/training.
+4. **Tone**: Be helpful and direct.
+5. **Restriction**: Do NOT say "The context does not contain information about..." or "I cannot find this in the documents". Just answer the question directly.
 
 Context:
 {sources}
@@ -92,7 +78,7 @@ def _groq_answer(question: str, contexts: List[Dict]) -> str:
             messages=[
                 {
                     "role": "system", 
-                    "content": "You are a precision-focused RAG Assistant. Your first priority is to answer using the provided Context documents. Only use outside knowledge if the Context fails."
+                    "content": "You are a helpful AI assistant. You have access to a Knowledge Base (Context). Use the Context if it helps answer the user's question. If the Context is irrelevant, ignore it and answer from your general knowledge."
                 },
                 {
                     "role": "user",
@@ -103,25 +89,5 @@ def _groq_answer(question: str, contexts: List[Dict]) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"Groq 70B Error: {e}. Falling back to 8B.")
-        # Fallback to 8B model (faster/cheaper)
-        try:
-            response = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": "You are a helpful AI assistant."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    }
-                ],
-                temperature=0.2,
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e2:
-            print(f"Groq 8B Error: {e2}")
-            return "I apologize, but I am currently unable to process your request due to high service load. Please try again later."
-
+        print(f"Groq 70B Error: {e}. Returning error message.")
+        return "I apologize, but I am currently unable to process your request due to high service load. Please try again later."

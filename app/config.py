@@ -27,27 +27,14 @@ class Settings(BaseSettings):
 
     # ---------- CORS ----------
     cors_origins: str = Field(
-        default="http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:8000,https://kb-frontend-plum.vercel.app,https://kb-backend-21p3.onrender.com",
+        default=None,
         alias="CORS_ORIGINS",
     )
 
     # ---------- Embeddings ----------
-    embedding_model_name: str = Field(
-        default="sentence-transformers/all-MiniLM-L6-v2",
-        alias="EMBEDDING_MODEL_NAME",
-    )
-    tokenizer_model_name: str = Field(
-        default="sentence-transformers/all-MiniLM-L6-v2",
-        alias="TOKENIZER_MODEL_NAME",
-    )
-
+    # FastEmbed uses BAAI/bge-small-en-v1.5 by default in embedding.py
+    
     # ---------- LLM Providers ----------
-    ollama_url: Optional[str] = Field(default=None, alias="OLLAMA_URL")
-    ollama_model: Optional[str] = Field(default=None, alias="OLLAMA_MODEL")
-
-    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
-    openai_model: Optional[str] = Field(default=None, alias="OPENAI_MODEL")
-
     groq_api_key: Optional[str] = Field(default=None, alias="GROQ_API_KEY")
 
     # ---------- Google Auth ----------
@@ -56,10 +43,15 @@ class Settings(BaseSettings):
     google_redirect_uri: Optional[str] = Field(default=None, alias="GOOGLE_REDIRECT_URI")
 
     # ---------- Frontend ----------
-    frontend_url: str = Field(default="http://localhost:3000,https://kb-frontend-plum.vercel.app", alias="FRONTEND_URL")
+    frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
 
-    # ---------- Seed flags ----------
-    seed_default_users: bool = Field(default=True, alias="SEED_DEFAULT_USERS")
+    # ---------- Email ----------
+    mail_username: Optional[str] = Field(default=None, alias="MAIL_USERNAME")
+    mail_password: Optional[str] = Field(default=None, alias="MAIL_PASSWORD")
+    mail_from: Optional[str] = Field(default=None, alias="MAIL_FROM")
+    mail_port: int = Field(default=587, alias="MAIL_PORT")
+    mail_server: Optional[str] = Field(default=None, alias="MAIL_SERVER")
+    mail_from_name: str = Field(default="KB RAG Platform", alias="MAIL_FROM_NAME")
 
     # ---------- Backward-compatible uppercase access ----------
     @property

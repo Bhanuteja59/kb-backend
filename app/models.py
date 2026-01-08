@@ -60,3 +60,9 @@ class AuditEvent(SQLModel, table=True):
     target: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     details: Optional[str] = None
+
+class VerificationCode(SQLModel, table=True):
+    email: str = Field(primary_key=True)
+    code: str
+    expires_at: datetime
+

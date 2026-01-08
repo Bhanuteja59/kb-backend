@@ -7,11 +7,16 @@ import uuid
 from ..db import get_session
 from ..config import settings
 from ..security import verify_password, hash_password, create_access_token, decode_token
-from ..models import User, Role, Organization
-from ..deps import get_current_user
-from ..schemas import LoginRequest, LoginResponse, SignupRequest, MeResponse, OnboardingRequest
-from ..utils import audit
 from ..google_auth import get_google_auth_url, get_google_user_info
+from ..models import User, Role, Organization, VerificationCode
+from ..deps import get_current_user
+from ..schemas import LoginRequest, LoginResponse, SignupRequest, MeResponse, OnboardingRequest, EmailRequest, OtpRequest, ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest
+from ..utils import audit
+from ..mailer import send_verification_email, send_welcome_email, send_password_reset_email
+from fastapi import BackgroundTasks
+import random
+from datetime import timedelta
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -25,8 +30,69 @@ def login(payload: LoginRequest, session: Session = Depends(get_session)):
     audit(session, actor=user.email, action="login")
     return LoginResponse(access_token=token)
 
+@router.post("/send-verification")
+async def send_verification(payload: EmailRequest, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    if session.exec(select(User).where(User.email == payload.email)).first():
+        # Ideally we should not reveal if user exists, but for this specific flow "Signup", we want to block duplicates early.
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    # Generate 6-digit code
+    code = f"{random.randint(100000, 999999)}"
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+
+    # Upsert code
+    verification = session.exec(select(VerificationCode).where(VerificationCode.email == payload.email)).first()
+    if verification:
+        verification.code = code
+        verification.expires_at = expires_at
+    else:
+        verification = VerificationCode(email=payload.email, code=code, expires_at=expires_at)
+        session.add(verification)
+    
+    session.commit()
+
+    # Send email
+    background_tasks.add_task(send_verification_email, payload.email, code)
+    return {"message": "Verification code sent"}
+
+@router.post("/verify-otp", response_model=LoginResponse)
+def verify_otp(payload: OtpRequest, session: Session = Depends(get_session)):
+    verification = session.exec(select(VerificationCode).where(VerificationCode.email == payload.email)).first()
+    
+    if not verification:
+        raise HTTPException(status_code=400, detail="No verification code found")
+    
+    if verification.code != payload.code:
+        raise HTTPException(status_code=400, detail="Invalid code")
+        
+    if verification.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Code expired")
+
+    # Generate "verification token" - basically a temporary access token with a special scope/role
+    # We can reuse the standard token structure but maybe use a special subject or role?
+    # Or just use a short lived token with "email_verified" role/scope.
+    # Let's use role="guest_verified" or similar, or just trust the client keeps it securely? 
+    # Better: Signed token that says "this email is verified".
+    token = create_access_token(subject=payload.email, role="email_verified", expires_minutes=60)
+    
+    # Clean up code
+    session.delete(verification)
+    session.commit()
+    
+    return LoginResponse(access_token=token)
+
+
 @router.post("/signup", response_model=LoginResponse)
-def signup(payload: SignupRequest, session: Session = Depends(get_session)):
+def signup(payload: SignupRequest, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    # 0. Verify Token
+    try:
+        token_data = decode_token(payload.verification_token)
+        if token_data.role != "email_verified" or token_data.sub != payload.email:
+             raise HTTPException(status_code=403, detail="Invalid verification token")
+    except Exception as e:
+        print(f"DEBUG: Signup token verification failed: {e}")
+        raise HTTPException(status_code=403, detail=f"Invalid or expired verification token. Details: {str(e)}")
+
     if session.exec(select(User).where(User.email == payload.email)).first():
         raise HTTPException(status_code=409, detail="Email already registered")
 
@@ -59,6 +125,10 @@ def signup(payload: SignupRequest, session: Session = Depends(get_session)):
 
     token = create_access_token(subject=user.email, role=user.role.value)
     audit(session, actor=user.email, action="signup", details={"role": user.role.value, "org_id": org.org_id})
+    
+    # 3. Send Welcome Email
+    background_tasks.add_task(send_welcome_email, user.email, user.full_name)
+    
     return LoginResponse(access_token=token)
 
 @router.get("/me", response_model=MeResponse)
@@ -92,6 +162,7 @@ def me(user: User = Depends(get_current_user), session: Session = Depends(get_se
         full_name=user.full_name,
         role=user.role,
         org_id=user.org_id,
+        org_name=org.name if org else None,
         org_slug=org.slug if org else None,
         plan=plan_name,
         max_docs=max_docs,
@@ -198,3 +269,66 @@ def complete_google_onboarding(payload: OnboardingRequest, session: Session = De
     # 4. Issue Final Token
     final_token = create_access_token(subject=user.email, role=user.role.value)
     return LoginResponse(access_token=final_token)
+
+
+# ---------- Password Reset & Change ----------
+
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordRequest, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.email == payload.email)).first()
+    if not user or not user.is_active:
+        # For security, we do not reveal if the email exists.
+        # But we should simulate a delay to prevent timing attacks? 
+        # For now, just return success.
+        return {"message": "If an account exists, a reset email has been sent."}
+
+    # Generate a reset token (valid for 30 mins)
+    token = create_access_token(subject=user.email, role="password_reset", expires_minutes=30)
+    
+    from ..mailer import send_password_reset_email
+    background_tasks.add_task(send_password_reset_email, user.email, token)
+    
+    return {"message": "If an account exists, a reset email has been sent."}
+
+
+@router.post("/reset-password", response_model=LoginResponse)
+def reset_password(payload: ResetPasswordRequest, session: Session = Depends(get_session)):
+    # Verify Token
+    try:
+        token_data = decode_token(payload.token)
+        if token_data.role != "password_reset":
+             raise HTTPException(status_code=403, detail="Invalid token scope")
+    except Exception as e:
+        raise HTTPException(status_code=403, detail="Invalid or expired reset token")
+
+    email = token_data.sub
+    user = session.exec(select(User).where(User.email == email)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update Password
+    user.password_hash = hash_password(payload.new_password)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    
+    audit(session, actor=user.email, action="password_reset")
+
+    # Log them in automatically
+    token = create_access_token(subject=user.email, role=user.role.value)
+    return LoginResponse(access_token=token)
+
+
+@router.post("/change-password")
+def change_password(payload: ChangePasswordRequest, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    # Verify Old Password
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+    
+    # Update Password
+    user.password_hash = hash_password(payload.new_password)
+    session.add(user)
+    session.commit()
+    
+    audit(session, actor=user.email, action="password_change")
+    return {"message": "Password updated successfully"}
