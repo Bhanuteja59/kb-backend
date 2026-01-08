@@ -9,6 +9,9 @@ def is_email_configured():
 
 
 if is_email_configured():
+    # Auto-configure SSL vs STARTTLS based on port
+    use_ssl = (settings.mail_port == 465)
+    
     conf = ConnectionConfig(
         MAIL_USERNAME=settings.mail_username,
         MAIL_PASSWORD=settings.mail_password,
@@ -16,10 +19,11 @@ if is_email_configured():
         MAIL_PORT=settings.mail_port,
         MAIL_SERVER=settings.mail_server,
         MAIL_FROM_NAME=settings.mail_from_name,
-        MAIL_STARTTLS=True,
-        MAIL_SSL_TLS=False,
+        MAIL_STARTTLS=not use_ssl,
+        MAIL_SSL_TLS=use_ssl,
         USE_CREDENTIALS=True,
-        VALIDATE_CERTS=True
+        VALIDATE_CERTS=True,
+        TIMEOUT=60 # Explicitly set timeout to 60 seconds
     )
     fast_mail = FastMail(conf)
 else:
