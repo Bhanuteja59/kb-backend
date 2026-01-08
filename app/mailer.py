@@ -22,8 +22,8 @@ if is_email_configured():
         MAIL_STARTTLS=not use_ssl,
         MAIL_SSL_TLS=use_ssl,
         USE_CREDENTIALS=True,
-        VALIDATE_CERTS=True,
-        TIMEOUT=60 # Explicitly set timeout to 60 seconds
+        VALIDATE_CERTS=False, # Often causes timeouts on cloud platforms if True
+        TIMEOUT=60 
     )
     fast_mail = FastMail(conf)
 else:
