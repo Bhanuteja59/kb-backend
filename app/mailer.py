@@ -22,7 +22,7 @@ if is_email_configured():
         MAIL_STARTTLS=not use_ssl,
         MAIL_SSL_TLS=use_ssl,
         USE_CREDENTIALS=True,
-        VALIDATE_CERTS=False, # Often causes timeouts on cloud platforms if True
+        VALIDATE_CERTS=False, 
         TIMEOUT=60 
     )
     fast_mail = FastMail(conf)
@@ -36,10 +36,10 @@ else:
 
 async def send_email(recipients: list[EmailStr], subject: str, html_body: str):
     """
-    Generic function to send emails, acting like a Nodemailer transporter.
+    Generic function to send emails via SMTP.
     """
     if not fast_mail:
-        print(f"MOCK EMAIL: To: {recipients}, Subject: {subject}")
+        print(f"MOCK EMAIL (SMTP Not Configured): To: {recipients}, Subject: {subject}")
         return
 
     message = MessageSchema(
@@ -79,10 +79,6 @@ async def send_welcome_email(email: EmailStr, name: str):
 
 
 async def send_password_reset_email(email: EmailStr, token: str):
-    # Retrieve frontend URL from settings to form the link
-    # We need to import settings here, or use the one already imported if available
-    # It seems settings is imported at the top of mailer.py
-    
     reset_link = f"{settings.frontend_url}/reset-password?token={token}"
     
     html = f"""

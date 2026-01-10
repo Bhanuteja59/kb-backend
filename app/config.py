@@ -46,12 +46,14 @@ class Settings(BaseSettings):
     frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
 
     # ---------- Email ----------
+    # ---------- Email ----------
     mail_username: Optional[str] = Field(default=None, alias="MAIL_USERNAME")
     mail_password: Optional[str] = Field(default=None, alias="MAIL_PASSWORD")
     mail_from: Optional[str] = Field(default=None, alias="MAIL_FROM")
     mail_port: int = Field(default=587, alias="MAIL_PORT")
     mail_server: Optional[str] = Field(default=None, alias="MAIL_SERVER")
     mail_from_name: str = Field(default="KB RAG Platform", alias="MAIL_FROM_NAME")
+
 
     # ---------- Backward-compatible uppercase access ----------
     @property

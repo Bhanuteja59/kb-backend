@@ -50,6 +50,11 @@ async def rag_chat(
             .where(Document.org_id == org_id)
         ).all()
         
+        print(f"DEBUG: RAG Search - Hits: {len(hits)}, Retrieved Chunks: {len(chunks)}")
+        
+        if hits and not chunks:
+            print(f"WARNING: DB Desync detected. Qdrant found {len(hits)} vectors but Postgres found 0 chunks. Possible zombie vectors.")
+
         # Format for LLM
         for c, d in chunks:
             contexts.append({
@@ -57,6 +62,8 @@ async def rag_chat(
                 "filename": d.filename,
                 "score": 0.0 # Placeholder
             })
+    else:
+        print("DEBUG: RAG Search - No hits found in Qdrant.")
 
     # 4. Generate Answer
     answer = await generate_answer(body.query, contexts)

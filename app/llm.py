@@ -55,14 +55,14 @@ Question:
 {question}
 
 Instructions:
-1. **Context Usage**: The "Context" below is from the user's knowledge base. Use it if relevant.
-2. **Fallback**: If the Context matches the question, use it to answer.
-3. **General Knowledge**: If the Context is NOT relevant or doesn't answer the question, **IGNORE the Context** and answer using your own general knowledge/training.
-4. **Tone**: Be helpful and direct.
-5. **Restriction**: Do NOT say "The context does not contain information about..." or "I cannot find this in the documents". Just answer the question directly.
+1. **Context Usage**: The "Context" below is from the user's knowledge base. Use it to answer the question.
+2. **Strict Grounding**: If the Context is empty or does not contain the answer, you MUST say "I could not find the answer in the provided documents."
+3. **Exceptions**: You may answer general greetings (Hi, Hello) or simple conversational fillers without context.
+4. **No Fabrication**: Do NOT make up facts. Do NOT use outside knowledge to fill gaps unless it is common sense definitions.
 
 Context:
 {sources}
+
 """
 
 

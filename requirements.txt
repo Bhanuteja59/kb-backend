@@ -17,3 +17,4 @@ httpx==0.28.1
 
 groq>=0.5.0
 fastapi-mail==1.4.1
+

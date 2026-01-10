@@ -330,5 +330,21 @@ def change_password(payload: ChangePasswordRequest, user: User = Depends(get_cur
     session.add(user)
     session.commit()
     
-    audit(session, actor=user.email, action="password_change")
-    return {"message": "Password updated successfully"}
+@router.get("/test-email")
+async def test_email(email: str):
+    """
+    Debug endpoint to test email sending synchronously.
+    """
+    from ..mailer import send_email
+    try:
+        # Try sending a simple email
+        await send_email([email], "Test Email from KB RAG", "<h1>It Works!</h1><p>Your email configuration is correct.</p>")
+        return {"message": "Email sent successfully!"}
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        return {
+            "status": "failed",
+            "error": str(e),
+            "trace": error_trace
+        }
