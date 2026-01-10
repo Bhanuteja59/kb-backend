@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     google_client_id: Optional[str] = Field(default=None, alias="GOOGLE_CLIENT_ID")
     google_client_secret: Optional[str] = Field(default=None, alias="GOOGLE_CLIENT_SECRET")
     google_redirect_uri: Optional[str] = Field(default=None, alias="GOOGLE_REDIRECT_URI")
+    
+    # ---------- Google Gemini ----------
+    google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
 
     # ---------- Frontend ----------
     frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
