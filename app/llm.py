@@ -1,45 +1,59 @@
 from __future__ import annotations
 from typing import List, Dict
 from groq import Groq
+import google.generativeai as genai
 from .config import settings
 
 
-# ---------- Client ----------
-_client: Groq | None = None
+# ---------- Clients ----------
+_groq_client: Groq | None = None
+_google_configured = False
 
 
-def _get_client() -> Groq:
-    global _client
-    if _client is None:
-        if not settings.GROQ_API_KEY:
-            print("WARNING: GROQ_API_KEY is not configured. LLM features will fail.")
-            return None
-        _client = Groq(api_key=settings.GROQ_API_KEY)
-    return _client
+def _get_groq_client() -> Groq:
+    global _groq_client
+    if _groq_client is None:
+        if settings.GROQ_API_KEY:
+             _groq_client = Groq(api_key=settings.GROQ_API_KEY)
+    return _groq_client
+
+def _configure_google():
+    global _google_configured
+    if not _google_configured and settings.google_api_key:
+        genai.configure(api_key=settings.google_api_key)
+        _google_configured = True
+    return _google_configured
 
 
 # ---------- Feature flag ----------
 def llm_enabled() -> bool:
-    return bool(settings.GROQ_API_KEY)
+    return bool(settings.GROQ_API_KEY or settings.google_api_key)
 
 
 # ---------- Public API ----------
 async def generate_answer(question: str, contexts: List[Dict]) -> str:
     """
     Return an answer grounded in contexts.
-    Context items include:
-    {doc_id, filename, chunk_id, chunk_index, text}
+    Tries Groq (Llama 70B) first for best reasoning.
+    Falls back to Gemini (Google) if Groq fails (e.g. Rate Limit).
     """
 
+    # 1. Try Groq
     if settings.GROQ_API_KEY:
-        return _groq_answer(question, contexts)
+        try:
+            return _groq_answer(question, contexts)
+        except Exception as e:
+            print(f"Groq Error: {e}. Falling back to Gemini...")
+    
+    # 2. Try Gemini (Fallback)
+    if settings.google_api_key:
+        try:
+            return _google_answer(question, contexts)
+        except Exception as e:
+             return f"Both AI providers failed. Google Error: {e}"
 
-        bullets.append(
-            f"- {t[:350]}{'…' if len(t) > 350 else ''} "
-            f"(source: {c['filename']} #chunk {c['chunk_index']})"
-        )
-
-    return "I found the following relevant excerpts:\n" + "\n".join(bullets)
+    # 3. No keys?
+    return "System Config Error: No LLM API Keys found (GROQ_API_KEY or GOOGLE_API_KEY). Please configure at least one."
 
 
 # ---------- Prompt builder ----------
@@ -51,7 +65,7 @@ def _build_prompt(question: str, contexts: List[Dict]) -> str:
     sources = "\n\n".join(blocks)
 
     return f"""You are a Knowledge Base Assistant.
-
+    
 Question:
 {question}
 
@@ -69,29 +83,36 @@ Context:
 
 # ---------- Groq implementation ----------
 def _groq_answer(question: str, contexts: List[Dict]) -> str:
-    client = _get_client()
+    client = _get_groq_client()
     if not client:
-        return "System Config Error: GROQ_API_KEY is missing. Please contact the administrator to add it in Render Environment Variables."
+        raise Exception("Groq client not initialized")
 
     prompt = _build_prompt(question, contexts)
 
     # Try 70B model first (better reasoning)
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "system", 
-                    "content": "You are a helpful AI assistant. You have access to a Knowledge Base (Context). Use the Context if it helps answer the user's question. If the Context is irrelevant, ignore it and answer from your general knowledge."
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-            temperature=0.2,
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"Groq 70B Error: {e}. Returning error message.")
-        return "I apologize, but I am currently unable to process your request due to high service load. Please try again later."
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "system", 
+                "content": "You are a helpful AI assistant. You have access to a Knowledge Base (Context). Use the Context if it helps answer the user's question. If the Context is irrelevant, ignore it and answer from your general knowledge."
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+        temperature=0.2,
+    )
+    return response.choices[0].message.content.strip()
+
+# ---------- Google implementation ----------
+def _google_answer(question: str, contexts: List[Dict]) -> str:
+    if not _configure_google():
+        raise Exception("Google Key missing")
+        
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    prompt = _build_prompt(question, contexts)
+    
+    response = model.generate_content(prompt)
+    return response.text

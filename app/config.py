@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     
     # ---------- Google Gemini ----------
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
+    
+
 
     # ---------- Frontend ----------
     frontend_url: str = Field(default="https://kb-frontend-plum.vercel.app", alias="FRONTEND_URL")

@@ -109,9 +109,7 @@ class QueryResponse(BaseModel):
     query: str
     hits: List[QueryHit]
 
-class DriveIngestRequest(BaseModel):
-    file_id: str
-    access_token: str
+
 
 class ChatRequest(BaseModel):
     query: str
