@@ -12,7 +12,8 @@ def _get_client() -> Groq:
     global _client
     if _client is None:
         if not settings.GROQ_API_KEY:
-            raise RuntimeError("GROQ_API_KEY is not configured")
+            print("WARNING: GROQ_API_KEY is not configured. LLM features will fail.")
+            return None
         _client = Groq(api_key=settings.GROQ_API_KEY)
     return _client
 
@@ -55,10 +56,10 @@ Question:
 {question}
 
 Instructions:
-1. **Context Usage**: The "Context" below is from the user's knowledge base. Use it to answer the question.
-2. **Strict Grounding**: If the Context is empty or does not contain the answer, you MUST say "I could not find the answer in the provided documents."
-3. **Exceptions**: You may answer general greetings (Hi, Hello) or simple conversational fillers without context.
-4. **No Fabrication**: Do NOT make up facts. Do NOT use outside knowledge to fill gaps unless it is common sense definitions.
+1. **Context Usage**: The "Context" below is from the user's knowledge base. Use it to answer the question if relevant.
+2. **Fallback Allowed**: If the Context is empty or does not contain the answer, you are FREE to answer using your general knowledge. Do NOT say "I could not find the answer".
+3. **Exceptions**: You may answer general greetings (Hi, Hello) or simple conversational fillers.
+4. **Accuracy**: Be helpful and accurate. If answering from general knowledge, ensure the information is reliable.
 
 Context:
 {sources}
@@ -69,6 +70,9 @@ Context:
 # ---------- Groq implementation ----------
 def _groq_answer(question: str, contexts: List[Dict]) -> str:
     client = _get_client()
+    if not client:
+        return "System Config Error: GROQ_API_KEY is missing. Please contact the administrator to add it in Render Environment Variables."
+
     prompt = _build_prompt(question, contexts)
 
     # Try 70B model first (better reasoning)

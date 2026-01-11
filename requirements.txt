@@ -8,7 +8,7 @@ psycopg2-binary==2.9.10
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-jose==3.3.0
-google-generativeai>=0.3.2
+fastembed>=0.5.0
 qdrant-client==1.11.3
 pypdf==5.1.0
 python-docx==1.1.2

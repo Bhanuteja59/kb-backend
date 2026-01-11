@@ -30,8 +30,8 @@ async def startup_event():
     # Initialize Qdrant collection and indexes on startup
     try:
         # Avoid loading the heavy ML model at startup to save memory on Render (Free Tier)
-        # 768 is the dimension for Google Gemini text-embedding-004
-        dim = 768 
+        # 384 is the dimension for all-MiniLM-L6-v2 / BGE-Small
+        dim = 384 
         ensure_collection(vector_size=dim)
         print(f"INFO:    Qdrant collection '{settings.QDRANT_COLLECTION}' verified with dimension {dim}")
     except Exception as e:

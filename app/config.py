@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # ---------- CORS ----------
     cors_origins: str = Field(
-        default=None,
+        default="http://localhost:3000,https://kb-frontend-plum.vercel.app",
         alias="CORS_ORIGINS",
     )
 

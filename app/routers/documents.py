@@ -378,7 +378,7 @@ def list_documents(
     ]
 
 @router.delete("/documents/{doc_id}", dependencies=[Depends(require_roles(Role.ADMIN, Role.MANAGER))])
-def soft_delete_document(
+def delete_document(
     doc_id: str,
     session: Session = Depends(get_session),
     actor: User = Depends(get_current_user),
@@ -391,12 +391,24 @@ def soft_delete_document(
     if not d:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    if not d.is_deleted:
-        d.is_deleted = True
-        d.deleted_at = datetime.utcnow()
-        d.deleted_by = actor.email
-        session.add(d)
+    # HARD DELETE LOGIC
+    try:
+        # 1. Delete Chunks from SQL
+        from sqlmodel import delete
+        session.exec(delete(Chunk).where(Chunk.doc_id == doc_id))
+        
+        # 2. Delete Vectors from Qdrant
+        from ..vectorstore import delete_vectors
+        delete_vectors(doc_id)
+        
+        # 3. Delete Document from SQL
+        session.delete(d)
         session.commit()
-        audit(session, actor=actor.email, action="delete", target=doc_id)
+        
+        audit(session, actor=actor.email, action="hard_delete", target=doc_id)
+        
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {e}")
 
     return {"ok": True}

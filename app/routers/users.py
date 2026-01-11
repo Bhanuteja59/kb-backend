@@ -105,3 +105,48 @@ def update_user(
     session.commit()
     audit(session, actor=actor.email, action="user_update", target=email)
     return {"ok": True}
+
+@router.delete("/{email}", dependencies=[Depends(require_roles(Role.ADMIN))])
+def delete_user(
+    email: str,
+    session: Session = Depends(get_session),
+    actor: User = Depends(get_current_user),
+):
+    from ..models import Document, Chunk
+    from sqlmodel import delete
+    from ..vectorstore import delete_vectors
+
+    u = session.exec(select(User).where(User.email == email)).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    # Security: Ensure Admin can only delete users in their own Org
+    if u.org_id != actor.org_id:
+        raise HTTPException(status_code=403, detail="Unauthorized access to user")
+
+    # CASCADE DELETE DOCUMENTS
+    # 1. Find all user docs
+    user_docs = session.exec(select(Document).where(Document.uploaded_by == email)).all()
+    
+    deleted_count = 0
+    for doc in user_docs:
+        try:
+            # 2. Delete Chunks
+            session.exec(delete(Chunk).where(Chunk.doc_id == doc.doc_id))
+            
+            # 3. Delete Vectors
+            delete_vectors(doc.doc_id)
+            
+            # 4. Delete Document
+            session.delete(doc)
+            deleted_count += 1
+        except Exception as e:
+            print(f"Error cascade deleting doc {doc.doc_id}: {e}")
+
+    # 5. Delete User
+    session.delete(u)
+    session.commit()
+    
+    audit(session, actor=actor.email, action="user_delete_cascade", target=email)
+    
+    return {"ok": True, "deleted_docs": deleted_count}
