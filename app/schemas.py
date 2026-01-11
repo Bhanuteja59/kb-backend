@@ -81,6 +81,7 @@ class DocumentOut(BaseModel):
     created_at: str
     status: str
     error_message: Optional[str] = None
+    chunk_count: int = 0
     is_deleted: bool = False
     deleted_at: Optional[str] = None
     deleted_by: Optional[str] = None

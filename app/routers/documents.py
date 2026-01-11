@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form
 from sqlmodel import Session, select
 from datetime import datetime
 import uuid
@@ -18,6 +18,8 @@ router = APIRouter(tags=["documents"])
 @router.post("/ingest", response_model=DocumentOut)
 async def ingest_file(
     file: UploadFile = File(...),
+    chunk_tokens: int = Form(500),
+    overlap_tokens: int = Form(80),
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
@@ -77,7 +79,7 @@ async def ingest_file(
     
     try:
         # 4. Chunk text
-        chunks = chunk_text_tokens(text)
+        chunks = chunk_text_tokens(text, chunk_tokens=chunk_tokens, overlap_tokens=overlap_tokens)
         
         # 5. Create Chunk records
         chunk_records = []
@@ -136,6 +138,7 @@ async def ingest_file(
         uploaded_by=doc.uploaded_by,
         created_at=doc.created_at.isoformat(),
         status=doc.status,
+        chunk_count=len(chunks),
         error_message=doc.error_message,
         is_deleted=doc.is_deleted,
         deleted_at=doc.deleted_at.isoformat() if doc.deleted_at else None,
