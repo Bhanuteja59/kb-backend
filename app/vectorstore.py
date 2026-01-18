@@ -78,12 +78,13 @@ def search(
 ):
     qdrant_filter = None
     if filters:
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
         qdrant_filter = Filter(
             must=[
-                {
-                    "key": k,
-                    "match": {"value": v},
-                }
+                FieldCondition(
+                    key=k,
+                    match=MatchValue(value=v),
+                )
                 for k, v in filters.items()
             ]
         )

@@ -20,12 +20,19 @@ class MeResponse(BaseModel):
     plan: str = "free"
     max_docs: int = 3
     doc_count: int = 0
+    max_storage_mb: int = 100
+    storage_usage_mb: float = 0.0
 
 class UserCreate(BaseModel):
     email: str
     full_name: str
     role: Role
     password: str = Field(min_length=8)
+
+class InviteRequest(BaseModel):
+    email: str
+    full_name: str
+    role: Role = Role.USER
 
 class SignupRequest(BaseModel):
     email: str

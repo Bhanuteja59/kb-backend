@@ -9,16 +9,19 @@ PRICING_PLANS = {
     PlanType.FREE: {
         "name": "Normal (Free)",
         "max_docs": 3,
+        "max_storage_mb": 30,
         "description": "For individuals and hobbyists"
     },
     PlanType.PRO: {
         "name": "Pro",
         "max_docs": 10,
+        "max_storage_mb": 200,
         "description": "For power users and small teams"
     },
     PlanType.ENTERPRISE: {
         "name": "Enterprise",
         "max_docs": 30,
+        "max_storage_mb": 500 ,
         "description": "For large organizations"
     }
 }

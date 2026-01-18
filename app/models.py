@@ -61,8 +61,14 @@ class AuditEvent(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     details: Optional[str] = None
 
-class VerificationCode(SQLModel, table=True):
-    email: str = Field(primary_key=True)
-    code: str
-    expires_at: datetime
+
+class ChatLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    org_id: str = Field(index=True)
+    user_id: Optional[int] = Field(default=None, index=True)
+    query: str
+    answer: str
+    response_time_ms: int
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 

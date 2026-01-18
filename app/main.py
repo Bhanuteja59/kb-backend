@@ -21,7 +21,7 @@ from .models import User, Role
 from .vectorstore import ensure_collection
 
 # Import Routers
-from .routers import auth, users, documents, audit, chat, public
+from .routers import auth, users, documents, audit, chat, public, analytics
 
 app = FastAPI(title="KB RAG API", version="2.0.0")
 
@@ -70,3 +70,4 @@ app.include_router(documents.router)
 app.include_router(audit.router)
 app.include_router(chat.router)
 app.include_router(public.router)
+app.include_router(analytics.router)

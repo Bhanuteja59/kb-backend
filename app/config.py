@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(alias="QDRANT_URL")
     qdrant_api_key: Optional[str] = Field(default=None, alias="QDRANT_API_KEY")
     qdrant_collection: str = Field(default="documents_v2", alias="QDRANT_COLLECTION")
+    max_upload_size_mb: int = Field(default=50, alias="MAX_UPLOAD_SIZE_MB")
 
     # ---------- Auth / Security ----------
     jwt_secret: str = Field(alias="JWT_SECRET")
@@ -51,13 +52,7 @@ class Settings(BaseSettings):
     frontend_url: str = Field(default="https://kb-frontend-plum.vercel.app", alias="FRONTEND_URL")
 
     # ---------- Email ----------
-    # ---------- Email ----------
-    mail_username: Optional[str] = Field(default=None, alias="MAIL_USERNAME")
-    mail_password: Optional[str] = Field(default=None, alias="MAIL_PASSWORD")
-    mail_from: Optional[str] = Field(default=None, alias="MAIL_FROM")
-    mail_port: int = Field(default=587, alias="MAIL_PORT")
-    mail_server: Optional[str] = Field(default=None, alias="MAIL_SERVER")
-    mail_from_name: str = Field(default="KB RAG Platform", alias="MAIL_FROM_NAME")
+
 
 
     # ---------- Backward-compatible uppercase access ----------
@@ -84,6 +79,12 @@ class Settings(BaseSettings):
     @property
     def JWT_SECRET(self) -> Optional[str]:
         return self.jwt_secret
+
+    @property
+    def FRONTEND_URL(self) -> str:
+        return self.frontend_url
+
+
 
     # ---------- Helpers ----------
     @property
