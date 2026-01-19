@@ -88,7 +88,8 @@ def delete_me(
     session.delete(user)
     session.commit()
     
-    audit(session, actor=user.email, action="user_delete_self", target=user.email)
+    # Anonymize logs for user deletion to remove PII
+    audit(session, actor="Deleted User", action="user_delete_self", target="Deleted User")
     
     return {"ok": True, "deleted_docs": deleted_count}
 
@@ -244,6 +245,7 @@ def delete_user(
     session.delete(u)
     session.commit()
     
-    audit(session, actor=actor.email, action="user_delete_cascade", target=email)
+    # Anonymize target for admin deletes as well
+    audit(session, actor=actor.email, action="user_delete_cascade", target="Deleted User")
     
     return {"ok": True, "deleted_docs": deleted_count}
