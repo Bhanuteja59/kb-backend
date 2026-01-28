@@ -21,10 +21,10 @@ class User(SQLModel, table=True):
     email: str = Field(index=True, unique=True)
     full_name: str
     role: Role = Field(default=Role.USER, index=True)
-    password_hash: str
     is_active: bool = Field(default=True, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     org_id: str = Field(index=True)
+    auth_provider: str = Field(default="google", index=True)
 
 class Document(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -56,19 +56,7 @@ class Chunk(SQLModel, table=True):
 class AuditEvent(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     actor_email: str = Field(index=True)
-    action: str = Field(index=True)  # login|upload|delete|restore|user_create|user_update
+    action: str = Field(index=True)  # login|upload|delete|restore|user_create|user_create
     target: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     details: Optional[str] = None
-
-
-class ChatLog(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    org_id: str = Field(index=True)
-    user_id: Optional[int] = Field(default=None, index=True)
-    query: str
-    answer: str
-    response_time_ms: int
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-

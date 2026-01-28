@@ -3,26 +3,26 @@ from enum import Enum
 class PlanType(str, Enum):
     FREE = "free"
     PRO = "pro"
-    ENTERPRISE = "enterprise"
+    ENTREPRENEUR = "entrepreneur"
 
 PRICING_PLANS = {
     PlanType.FREE: {
         "name": "Normal (Free)",
-        "max_docs": 3,
-        "max_storage_mb": 30,
+        "max_docs": 5,
+        "max_size_bytes": 10 * 1024 * 1024, # 10MB
         "description": "For individuals and hobbyists"
     },
     PlanType.PRO: {
         "name": "Pro",
-        "max_docs": 10,
-        "max_storage_mb": 200,
+        "max_docs": 30,
+        "max_size_bytes": 30 * 1024 * 1024, # 30MB
         "description": "For power users and small teams"
     },
-    PlanType.ENTERPRISE: {
-        "name": "Enterprise",
-        "max_docs": 30,
-        "max_storage_mb": 500 ,
-        "description": "For large organizations"
+    PlanType.ENTREPRENEUR: {
+        "name": "Entrepreneur",
+        "max_docs": 100,
+        "max_size_bytes": 50 * 1024 * 1024, # 50MB
+        "description": "For growing businesses"
     }
 }
 

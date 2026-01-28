@@ -25,3 +25,12 @@ myvenv/
 data/
 uploads/
 storage/
+
+# Temporary & Migration Files
+migrate_*.py
+*.sql
+test_*.py
+debug_*.py
+cleanup.py
+*.backup
+*.tmp

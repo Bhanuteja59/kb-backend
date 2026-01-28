@@ -18,7 +18,11 @@ COLLECTION_NAME = settings.qdrant_collection
 
 
 # ---------- Collection ----------
-def ensure_collection(vector_size: int):
+def ensure_collection(vector_size: int = 384):
+    """
+    Ensure Qdrant collection exists with correct vector dimensions.
+    Default: 384 dimensions for all-MiniLM-L6-v2 model.
+    """
     collections = client.get_collections().collections
     if not any(c.name == COLLECTION_NAME for c in collections):
         client.create_collection(
@@ -29,8 +33,7 @@ def ensure_collection(vector_size: int):
             ),
         )
 
-    # Ensure indices exist (required for filtering in recent Qdrant versions)
-    # We use "keyword" for exact ID matching
+    # Create indices for fast filtering
     for field in ["org_id", "doc_id", "filename", "chunk_index"]:
         try:
             client.create_payload_index(
@@ -39,7 +42,7 @@ def ensure_collection(vector_size: int):
                 field_schema="keyword" if field != "chunk_index" else "integer",
             )
         except Exception:
-            # Ignore if already exists or other minor issue to prevent crash
+            # Index already exists
             pass
 
 
@@ -78,13 +81,12 @@ def search(
 ):
     qdrant_filter = None
     if filters:
-        from qdrant_client.models import Filter, FieldCondition, MatchValue
         qdrant_filter = Filter(
             must=[
-                FieldCondition(
-                    key=k,
-                    match=MatchValue(value=v),
-                )
+                {
+                    "key": k,
+                    "match": {"value": v},
+                }
                 for k, v in filters.items()
             ]
         )
@@ -119,5 +121,6 @@ def delete_vectors(doc_id: str):
             ),
         )
     except Exception as e:
-        print(f"Error deleting vectors for doc_id {doc_id}: {e}")
+        # Silently fail - vectors may not exist
+        pass
 

@@ -1,10 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional, List
 from .models import Role
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
 
 class LoginResponse(BaseModel):
     access_token: str
@@ -17,49 +13,17 @@ class MeResponse(BaseModel):
     org_id: Optional[str] = None
     org_name: Optional[str] = None
     org_slug: Optional[str] = None
+    auth_provider: str = "email"
     plan: str = "free"
     max_docs: int = 3
+    max_file_size_bytes: int = 20 * 1024 * 1024
     doc_count: int = 0
-    max_storage_mb: int = 100
-    storage_usage_mb: float = 0.0
+    total_storage_bytes: int = 0
 
 class UserCreate(BaseModel):
     email: str
     full_name: str
     role: Role
-    password: str = Field(min_length=8)
-
-class InviteRequest(BaseModel):
-    email: str
-    full_name: str
-    role: Role = Role.USER
-
-class SignupRequest(BaseModel):
-    email: str
-    full_name: str
-    password: str = Field(min_length=8)
-    role: Role = Role.USER
-    organization_name: str
-    verification_token: str
-
-class EmailRequest(BaseModel):
-    email: str
-
-class OtpRequest(BaseModel):
-    email: str
-    code: str
-
-class ForgotPasswordRequest(BaseModel):
-    email: str
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    new_password: str = Field(min_length=8)
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str = Field(min_length=8)
-
 
 class OnboardingRequest(BaseModel):
     token: str
@@ -69,7 +33,6 @@ class OnboardingRequest(BaseModel):
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     role: Optional[Role] = None
-    password: Optional[str] = Field(default=None, min_length=8)
     is_active: Optional[bool] = None
 
 class UserProfileUpdate(BaseModel):
@@ -117,8 +80,6 @@ class QueryResponse(BaseModel):
     query: str
     hits: List[QueryHit]
 
-
-
 class ChatRequest(BaseModel):
     query: str
     top_k: int = 5
@@ -143,10 +104,6 @@ class AuditOut(BaseModel):
     target: Optional[str]
     created_at: str
     details: Optional[str]
-
-
-
-
 
 class UploadResponse(BaseModel):
     status: str

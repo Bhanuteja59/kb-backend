@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form
 from sqlmodel import Session, select
 from datetime import datetime
 import uuid
@@ -17,7 +17,6 @@ router = APIRouter(tags=["documents"])
 
 @router.post("/ingest", response_model=DocumentOut)
 async def ingest_file(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     chunk_tokens: int = Form(500),
     overlap_tokens: int = Form(80),
@@ -41,6 +40,8 @@ async def ingest_file(
         plan_name = DEFAULT_PLAN.value
     
     max_docs = PRICING_PLANS[plan_name]["max_docs"]
+    max_size_bytes = PRICING_PLANS[plan_name].get("max_size_bytes", 10 * 1024 * 1024)
+
     
     if current_count >= max_docs:
          raise HTTPException(
@@ -55,35 +56,19 @@ async def ingest_file(
 
     # 1. Read file
     content = await file.read()
-    new_size = len(content)
     
-    # Validation: Max Size from Settings (Per File Hard Limit)
-    from ..config import settings
-    max_bytes_file = settings.max_upload_size_mb * 1024 * 1024
-    if new_size > max_bytes_file:
-        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {settings.max_upload_size_mb}MB.")
+    # Validation: Check Plan Limit
+    if len(content) > max_size_bytes:
+        limit_mb = int(max_size_bytes / (1024 * 1024))
+        raise HTTPException(status_code=413, detail=f"File too large. Your plan limit is {limit_mb}MB.")
 
-    # Validation: Organization Storage Limit (Cumulative)
-    # Re-fetch plan details to get storage limit
-    max_storage_mb = PRICING_PLANS[plan_name].get("max_storage_mb", 30) # Default to 30 if missing
-    max_storage_bytes = max_storage_mb * 1024 * 1024
-    
-    current_storage_bytes = session.exec(
-        select(func.sum(Document.size_bytes)).select_from(Document)
-        .where(Document.org_id == user.org_id)
-        .where(Document.is_deleted == False) # noqa
-    ).one() or 0
-    
-    if (current_storage_bytes + new_size) > max_storage_bytes:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "error_code": "STORAGE_LIMIT_EXCEEDED",
-                "message": f"Storage limit exceeded. Free limit is {max_storage_mb} MB per org.",
-                "current_usage_mb": round(current_storage_bytes / (1024 * 1024), 2),
-                "limit_mb": max_storage_mb
-            }
-        )
+    # Validation: Check File Type
+    valid_extensions = {".pdf", ".doc", ".docx"}
+    import os
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in valid_extensions:
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and Word documents are allowed.")
+
     
     # 2. Extract text
     text, file_type = extract_text(file.filename, content)
@@ -102,19 +87,63 @@ async def ingest_file(
     )
     session.add(doc)
     session.commit()
-    session.refresh(doc)
     
-    # 4. Offload to Background Task
-    background_tasks.add_task(
-        process_ingestion_background,
-        doc_id=doc_id,
-        text=text,
-        filename=file.filename,
-        user_email=user.email,
-        org_id=user.org_id,
-        chunk_tokens=chunk_tokens,
-        overlap_tokens=overlap_tokens
-    )
+    try:
+        # 4. Chunk text with file-size-aware optimization
+        chunks = chunk_text_tokens(
+            text, 
+            chunk_tokens=chunk_tokens, 
+            overlap_tokens=overlap_tokens,
+            file_size_bytes=len(content)  # Pass file size for optimal chunking
+        )
+        
+        # 5. Create Chunk records
+        chunk_records = []
+        for i, chunk_text in enumerate(chunks):
+            cid = str(uuid.uuid4())
+            c = Chunk(
+                chunk_id=cid,
+                doc_id=doc_id,
+                chunk_index=i,
+                text=chunk_text,
+            )
+            chunk_records.append(c)
+        session.add_all(chunk_records)
+        session.commit()
+        
+        # 6. Embed texts
+        vectors = embed_texts(chunks)
+        
+        # 7. Upsert to Qdrant
+        points = []
+        for i, vec in enumerate(vectors):
+            payload = {
+                "doc_id": doc_id,
+                "chunk_index": i,
+                "text": chunks[i],
+                "filename": file.filename,
+                "org_id": user.org_id,
+            }
+            points.append((chunk_records[i].chunk_id, vec, payload))
+            
+        if points:
+            ensure_collection(vector_size=len(vectors[0]))
+            upsert_points(points)
+            
+        # 8. Update Document status
+        doc.status = "indexed"
+        session.add(doc)
+        session.commit()
+        
+        # 9. Audit
+        audit(session, actor=user.email, action="upload", target=doc.filename)
+        
+    except Exception as e:
+        doc.status = "error"
+        doc.error_message = str(e)
+        session.add(doc)
+        session.commit()
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
 
     return DocumentOut(
         doc_id=doc.doc_id,
@@ -125,92 +154,12 @@ async def ingest_file(
         uploaded_by=doc.uploaded_by,
         created_at=doc.created_at.isoformat(),
         status=doc.status,
-        chunk_count=0, # Initially 0
+        chunk_count=len(chunks),
         error_message=doc.error_message,
         is_deleted=doc.is_deleted,
         deleted_at=doc.deleted_at.isoformat() if doc.deleted_at else None,
         deleted_by=doc.deleted_by,
     )
-
-def process_ingestion_background(
-    doc_id: str,
-    text: str,
-    filename: str,
-    user_email: str,
-    org_id: str,
-    chunk_tokens: int,
-    overlap_tokens: int
-):
-    """
-    Background worker to handle chunking, embedding, and vector storage.
-    """
-    from ..db import engine
-    from ..models import Chunk
-    
-    # Create a NEW session for the background task
-    # We cannot use the dependency injection session as it closes when the request finishes
-    with Session(engine) as session:
-        try:
-            # Re-fetch document to ensure we have it attached to this session
-            doc = session.exec(select(Document).where(Document.doc_id == doc_id)).first()
-            if not doc:
-                print(f"Background Error: Document {doc_id} not found")
-                return
-
-            # 4. Chunk text
-            chunks = chunk_text_tokens(text, chunk_tokens=chunk_tokens, overlap_tokens=overlap_tokens)
-            
-            # 5. Create Chunk records
-            chunk_records = []
-            for i, chunk_text in enumerate(chunks):
-                cid = str(uuid.uuid4())
-                c = Chunk(
-                    chunk_id=cid,
-                    doc_id=doc_id,
-                    chunk_index=i,
-                    text=chunk_text,
-                )
-                chunk_records.append(c)
-            session.add_all(chunk_records)
-            session.commit()
-            
-            # 6. Embed texts
-            vectors = embed_texts(chunks)
-            
-            # 7. Upsert to Qdrant
-            points = []
-            for i, vec in enumerate(vectors):
-                payload = {
-                    "doc_id": doc_id,
-                    "chunk_index": i,
-                    "text": chunks[i],
-                    "filename": filename,
-                    "org_id": org_id,
-                }
-                points.append((chunk_records[i].chunk_id, vec, payload))
-                
-            if points:
-                ensure_collection(vector_size=len(vectors[0]))
-                upsert_points(points)
-                
-            # 8. Update Document status
-            doc.status = "indexed"
-            session.add(doc)
-            session.commit()
-            
-            # 9. Audit
-            audit(session, actor=user_email, action="upload", target=filename)
-            
-        except Exception as e:
-            print(f"Background Ingestion Failed for {doc_id}: {e}")
-            # Try to update status to error
-            try:
-                doc.status = "error"
-                doc.error_message = str(e)
-                session.add(doc)
-                session.commit()
-            except:
-                pass
 
 
 
@@ -271,23 +220,10 @@ def list_documents(
     if user.role == Role.USER:
         include_deleted = False
 
-    from sqlalchemy import func
-    # Optimized Loop-free extraction with Scalar Subquery
-    # Instead of JOIN + GROUP BY (which explodes rows), use a correlated subquery
-    chunk_count_subq = (
-        select(func.count(Chunk.chunk_id))
-        .where(Chunk.doc_id == Document.doc_id)
-        .scalar_subquery()
-    )
-
-    stmt = (
-        select(Document, chunk_count_subq.label("chunk_count"))
-        .where(Document.org_id == user.org_id)
-        .order_by(Document.created_at.desc())
-    )
+    stmt = select(Document).where(Document.org_id == user.org_id).order_by(Document.created_at.desc())
+    # All deletes are hard deletes now, so no need to filter is_deleted or allow include_deleted
     
-    results = session.exec(stmt).all()
-    
+    docs = session.exec(stmt).all()
     return [
         DocumentOut(
             doc_id=d.doc_id,
@@ -302,9 +238,8 @@ def list_documents(
             is_deleted=d.is_deleted,
             deleted_at=d.deleted_at.isoformat() if d.deleted_at else None,
             deleted_by=d.deleted_by,
-            chunk_count=count
         )
-        for d, count in results
+        for d in docs
     ]
 
 @router.delete("/documents/{doc_id}", dependencies=[Depends(require_roles(Role.ADMIN, Role.MANAGER))])

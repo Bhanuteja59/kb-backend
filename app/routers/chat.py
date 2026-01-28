@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 from typing import Optional
 
 from ..db import get_session
-from ..models import User, Organization, Chunk, Document, ChatLog
+from ..models import User, Organization, Chunk, Document
 from ..deps import get_current_user_optional
 from ..schemas import ChatRequest, ChatResponse, Citation
 from ..embedding import embed_query
@@ -31,20 +31,13 @@ async def rag_chat(
         raise HTTPException(status_code=404, detail="Invalid Organization ID. Please check your configuration.")
 
     # 2. Search (Embed + Vector DB)
-    import time
-    t0 = time.time()
     qv = embed_query(body.query)
-    t1 = time.time()
     hits = vs_search(qv, top_k=body.top_k, filters={"org_id": org_id})
-    t2 = time.time()
     
     if not hits:
         ids = [] 
     else:
-        # ... existing logic ...
-        pass
-    
-    ids = [str(h.id) for h in hits] if hits else []
+        ids = [str(h.id) for h in hits]
 
     # 3. Retrieve Content (Simple Query)
     # We just fetch the text content. simpler than mapping objects.
@@ -65,31 +58,12 @@ async def rag_chat(
                 "score": 0.0 # Placeholder
             })
     else:
-        pass # No hits
-    t3 = time.time()
+        pass # No hits found in Qdrant.
 
     # 4. Generate Answer
-    print(f"PERF: Embed={int((t1-t0)*1000)}ms, Qdrant={int((t2-t1)*1000)}ms, Postgres={int((t3-t2)*1000)}ms")
-    import time
-    start_time = time.time()
     answer = await generate_answer(body.query, contexts)
-    duration_ms = int((time.time() - start_time) * 1000)
 
-    # 5. Log Chat
-    try:
-        chat_log = ChatLog(
-            org_id=org_id,
-            user_id=user.id if user else None,
-            query=body.query,
-            answer=answer,
-            response_time_ms=duration_ms
-        )
-        session.add(chat_log)
-        session.commit()
-    except Exception as e:
-        print(f"ERROR: Failed to save chat log: {e}")
-
-    # 6. Return (No citations, just answer)
+    # 5. Return (No citations, just answer)
     return ChatResponse(
         query=body.query,
         answer=answer,

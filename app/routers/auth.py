@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select, func
 from datetime import datetime
@@ -6,84 +6,31 @@ import uuid
 
 from ..db import get_session
 from ..config import settings
-from ..security import create_access_token, decode_token, hash_password
+from ..security import create_access_token, decode_token
 from ..google_auth import get_google_auth_url, get_google_user_info
-from ..models import User, Organization
+from ..models import User, Role, Organization
 from ..deps import get_current_user
 from ..schemas import LoginResponse, MeResponse, OnboardingRequest
 from ..utils import audit
 
-
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-@router.get("/me", response_model=MeResponse)
-def me(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    org = session.exec(select(Organization).where(Organization.org_id == user.org_id)).first()
-    
-    # Calculate usage
-    # Calculate usage
-    doc_count = 0
-    storage_usage_mb = 0.0
-    plan_name = "free"
-    max_docs = 3
-    max_storage_mb = 100
-    
-    if org:
-        from ..pricing import PRICING_PLANS, DEFAULT_PLAN
-        from ..models import Document
-        
-        # Get count of non-deleted documents and sum of size
-        result = session.exec(
-            select(func.count(Document.doc_id), func.sum(Document.size_bytes))
-            .where(Document.org_id == user.org_id)
-            .where(Document.is_deleted == False) # noqa
-        ).one()
-        
-        doc_count = result[0] or 0
-        total_bytes = result[1] or 0
-        storage_usage_mb = round(total_bytes / (1024 * 1024), 2)
-        
-        plan_name = org.plan
-        if plan_name not in PRICING_PLANS:
-            plan_name = DEFAULT_PLAN.value
-            
-        max_docs = PRICING_PLANS[plan_name]["max_docs"]
-        max_storage_mb = PRICING_PLANS[plan_name].get("max_storage_mb", 100)
-
-    return MeResponse(
-        email=user.email,
-        full_name=user.full_name,
-        role=user.role,
-        org_id=user.org_id,
-        org_name=org.name if org else None,
-        org_slug=org.slug if org else None,
-        plan=plan_name,
-        max_docs=max_docs,
-        doc_count=doc_count,
-        max_storage_mb=max_storage_mb,
-        storage_usage_mb=storage_usage_mb
-    )
+# --- Google Auth ---
 
 @router.get("/google/login")
 def google_login():
-    redirect_uri = settings.google_redirect_uri or f"{settings.cors_origin_list[0]}/auth/google/callback"
-    if not settings.google_redirect_uri:
-        pass
-
     uri = settings.google_redirect_uri
     if not uri:
-         raise HTTPException(status_code=500, detail="GOOGLE_REDIRECT_URI is not configured.")
-
+        raise HTTPException(status_code=500, detail="GOOGLE_REDIRECT_URI is not configured")
     auth_url = get_google_auth_url(uri)
     return RedirectResponse(auth_url)
-
 
 @router.get("/google/callback")
 async def google_callback(code: str, session: Session = Depends(get_session)):
     uri = settings.google_redirect_uri
     if not uri:
-         raise HTTPException(status_code=500, detail="GOOGLE_REDIRECT_URI is not configured.")
-
+        raise HTTPException(status_code=500, detail="GOOGLE_REDIRECT_URI is not configured")
+    
     try:
         user_info = await get_google_user_info(code, uri)
     except Exception as e:
@@ -100,7 +47,6 @@ async def google_callback(code: str, session: Session = Depends(get_session)):
     if not user:
         # User doesn't exist. Issue a temporary "onboarding" token.
         token = create_access_token(subject=email, role="onboarding", expires_minutes=1440)
-        
         encoded_name = (name or "").replace(" ", "+")
         
         # Redirect to Onboarding Page
@@ -109,20 +55,16 @@ async def google_callback(code: str, session: Session = Depends(get_session)):
 
     else:
         audit(session, actor=email, action="login_google")
-        # Issue Standard Token
         token = create_access_token(subject=user.email, role=user.role.value)
-        # Redirect to callback
         frontend_redirect = f"{settings.frontend_url}/auth/callback?token={token}"
         return RedirectResponse(frontend_redirect)
 
 @router.post("/google/onboarding", response_model=LoginResponse)
 def complete_google_onboarding(payload: OnboardingRequest, session: Session = Depends(get_session)):
     # 1. Verify Token
-    print(f"DEBUG: Received Onboarding Token: {payload.token}")
     try:
         token_data = decode_token(payload.token)
     except Exception as e:
-        print(f"DEBUG: Token decode failed in main: {e}")
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
     
     if token_data.role != "onboarding":
@@ -151,9 +93,9 @@ def complete_google_onboarding(payload: OnboardingRequest, session: Session = De
         email=email,
         full_name=email.split("@")[0], 
         role=payload.role,
-        password_hash=hash_password(str(uuid.uuid4())),
         is_active=True,
         org_id=org.org_id,
+        auth_provider="google",
     )
     session.add(user)
     session.commit()
@@ -164,3 +106,53 @@ def complete_google_onboarding(payload: OnboardingRequest, session: Session = De
     # 4. Issue Final Token
     final_token = create_access_token(subject=user.email, role=user.role.value)
     return LoginResponse(access_token=final_token)
+
+
+@router.get("/me", response_model=MeResponse)
+def me(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    org = session.exec(select(Organization).where(Organization.org_id == user.org_id)).first()
+    
+    # Calculate usage
+    doc_count = 0
+    total_storage_bytes = 0
+    plan_name = "free"
+    max_docs = 3
+    max_file_size = 20 * 1024 * 1024
+    
+    if org:
+        from ..pricing import PRICING_PLANS, DEFAULT_PLAN
+        from ..models import Document
+        
+        doc_count = session.exec(
+            select(func.count()).select_from(Document)
+            .where(Document.org_id == user.org_id)
+            .where(Document.is_deleted == False) # noqa
+        ).one()
+
+        total_storage_bytes = session.exec(
+            select(func.sum(Document.size_bytes)).select_from(Document)
+            .where(Document.org_id == user.org_id)
+            .where(Document.is_deleted == False) # noqa
+        ).one() or 0
+        
+        plan_name = org.plan
+        if plan_name not in PRICING_PLANS:
+            plan_name = DEFAULT_PLAN.value
+            
+        max_docs = PRICING_PLANS[plan_name]["max_docs"]
+        max_file_size = PRICING_PLANS[plan_name].get("max_size_bytes", 20 * 1024 * 1024)
+
+    return MeResponse(
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role,
+        org_id=user.org_id,
+        auth_provider=user.auth_provider,
+        org_name=org.name if org else None,
+        org_slug=org.slug if org else None,
+        plan=plan_name,
+        max_docs=max_docs,
+        max_file_size_bytes=max_file_size,
+        doc_count=doc_count,
+        total_storage_bytes=int(total_storage_bytes)
+    )

@@ -12,51 +12,49 @@ except Exception:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session, select
 
 from .config import settings
-from .db import create_db_and_tables, get_session
-from .models import User, Role
+from .db import create_db_and_tables
 
 from .vectorstore import ensure_collection
 
 # Import Routers
-from .routers import auth, users, documents, audit, chat, public, analytics
+from .routers import auth, users, documents, audit, chat, public
 
 app = FastAPI(title="KB RAG API", version="2.0.0")
 
 @app.on_event("startup")
-async def startup_event():
-    # Initialize Qdrant collection and indexes on startup
+async def startup():
+    """Initialize database and Qdrant on startup."""
     try:
-        # Avoid loading the heavy ML model at startup to save memory on Render (Free Tier)
-        dim = 384 
-        ensure_collection(vector_size=dim)
-        print(f"INFO:    Qdrant collection '{settings.QDRANT_COLLECTION}' verified with dimension {dim}")
+        # Initialize database tables
+        create_db_and_tables()
     except Exception as e:
-        print(f"WARNING: Failed to initialize Qdrant on startup: {e}")
+        # Log error but continue - app can still serve health checks
+        pass
+    
+    # Initialize Qdrant in background (non-blocking)
+    import asyncio
+    async def init_qdrant_background():
+        try:
+            from .vectorstore import ensure_collection as init_collection
+            from .embedding import get_embedding_dimension
+            dim = get_embedding_dimension()
+            init_collection(vector_size=dim)
+        except Exception as e:
+            # Log error but continue - vector features may be unavailable
+            pass
+    
+    asyncio.create_task(init_qdrant_background())
 
 # ---------- CORS ----------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://kb-frontend-plum.vercel.app",
-        "http://localhost:3000"
-    ],
+    allow_origins=settings.cors_origin_list,  # Loaded from CORS_ORIGINS env var
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-
-# ---------- Startup ----------
-@app.on_event("startup")
-def on_startup():
-    try:
-        create_db_and_tables()
-    except Exception as e:
-        pass
 
 # ---------- Health ----------
 @app.get("/health")
@@ -70,4 +68,3 @@ app.include_router(documents.router)
 app.include_router(audit.router)
 app.include_router(chat.router)
 app.include_router(public.router)
-app.include_router(analytics.router)

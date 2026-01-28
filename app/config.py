@@ -16,10 +16,9 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(alias="QDRANT_URL")
     qdrant_api_key: Optional[str] = Field(default=None, alias="QDRANT_API_KEY")
     qdrant_collection: str = Field(default="documents_v2", alias="QDRANT_COLLECTION")
-    max_upload_size_mb: int = Field(default=50, alias="MAX_UPLOAD_SIZE_MB")
 
     # ---------- Auth / Security ----------
-    jwt_secret: str = Field(alias="JWT_SECRET")
+    jwt_secret: str = Field(alias="JWT_SECRET_KEY") # Changed from JWT_SECRET to match .env
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(
         default=30,
@@ -27,9 +26,13 @@ class Settings(BaseSettings):
     )
 
     # ---------- CORS ----------
-    cors_origins: str = Field(
-        default="http://localhost:3000,https://kb-frontend-plum.vercel.app",
+    cors_origins: list[str] = Field(
+        default=[
+            "http://localhost:3000",
+            "https://kb-frontend-plum.vercel.app"
+        ],
         alias="CORS_ORIGINS",
+        validation_alias="CORS_ORIGINS" 
     )
 
     # ---------- Embeddings ----------
@@ -47,13 +50,8 @@ class Settings(BaseSettings):
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     
 
-
     # ---------- Frontend ----------
     frontend_url: str = Field(default="https://kb-frontend-plum.vercel.app", alias="FRONTEND_URL")
-
-    # ---------- Email ----------
-
-
 
     # ---------- Backward-compatible uppercase access ----------
     @property
@@ -80,16 +78,10 @@ class Settings(BaseSettings):
     def JWT_SECRET(self) -> Optional[str]:
         return self.jwt_secret
 
-    @property
-    def FRONTEND_URL(self) -> str:
-        return self.frontend_url
-
-
-
     # ---------- Helpers ----------
     @property
     def cors_origin_list(self) -> List[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        return self.cors_origins
 
 
 settings = Settings()

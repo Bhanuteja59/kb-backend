@@ -1,5 +1,7 @@
 import httpx
+from urllib.parse import urlencode
 from .config import settings
+from fastapi import HTTPException
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -20,7 +22,7 @@ def get_google_auth_url(redirect_uri: str) -> str:
         "access_type": "offline",
         "prompt": "consent",
     }
-    query_string = "&".join([f"{key}={value}" for key, value in params.items()])
+    query_string = urlencode(params)
     return f"{GOOGLE_AUTH_URL}?{query_string}"
 
 
@@ -40,9 +42,13 @@ async def get_google_user_info(code: str, redirect_uri: str) -> dict:
             "grant_type": "authorization_code",
             "redirect_uri": redirect_uri,
         }
-        token_res = await client.post(GOOGLE_TOKEN_URL, data=token_data)
-        token_res.raise_for_status()
-        tokens = token_res.json()
+        try:
+            token_res = await client.post(GOOGLE_TOKEN_URL, data=token_data)
+            token_res.raise_for_status()
+            tokens = token_res.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=400, detail=f"Google token exchange failed: {e.response.text if hasattr(e, 'response') else str(e)}")
+        
         access_token = tokens["access_token"]
 
         # Get user info
