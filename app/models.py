@@ -25,6 +25,7 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     org_id: str = Field(index=True)
     auth_provider: str = Field(default="google", index=True)
+    password_hash: Optional[str] = Field(default=None)
 
 class Document(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

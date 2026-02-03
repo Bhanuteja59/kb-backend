@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form, BackgroundTasks
 from sqlmodel import Session, select
 from datetime import datetime
 import uuid
+import asyncio
 
 from ..db import get_session
 from ..models import User, Role, Document, Chunk, Organization
@@ -70,8 +71,8 @@ async def ingest_file(
         raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and Word documents are allowed.")
 
     
-    # 2. Extract text
-    text, file_type = extract_text(file.filename, content)
+    # 2. Extract text (CPU Heavy)
+    text, file_type = await asyncio.to_thread(extract_text, file.filename, content)
     
     # 3. Create Document record
     doc_id = str(uuid.uuid4())
@@ -89,12 +90,13 @@ async def ingest_file(
     session.commit()
     
     try:
-        # 4. Chunk text with file-size-aware optimization
-        chunks = chunk_text_tokens(
+        # 4. Chunk text with file-size-aware optimization (CPU Heavy)
+        chunks = await asyncio.to_thread(
+            chunk_text_tokens,
             text, 
             chunk_tokens=chunk_tokens, 
             overlap_tokens=overlap_tokens,
-            file_size_bytes=len(content)  # Pass file size for optimal chunking
+            file_size_bytes=len(content)
         )
         
         # 5. Create Chunk records
@@ -111,10 +113,10 @@ async def ingest_file(
         session.add_all(chunk_records)
         session.commit()
         
-        # 6. Embed texts
-        vectors = embed_texts(chunks)
+        # 6. Embed texts (Model Inference - Very Heavy)
+        vectors = await asyncio.to_thread(embed_texts, chunks)
         
-        # 7. Upsert to Qdrant
+        # 7. Upsert to Qdrant (Network I/O + partial CPU)
         points = []
         for i, vec in enumerate(vectors):
             payload = {
@@ -127,15 +129,16 @@ async def ingest_file(
             points.append((chunk_records[i].chunk_id, vec, payload))
             
         if points:
+            # ensure_collection is fast, but upsert is network bound sync call
             ensure_collection(vector_size=len(vectors[0]))
-            upsert_points(points)
+            await asyncio.to_thread(upsert_points, points)
             
         # 8. Update Document status
         doc.status = "indexed"
         session.add(doc)
         session.commit()
         
-        # 9. Audit
+        # 9. Audit (async function call if any, but audit is sync here)
         audit(session, actor=user.email, action="upload", target=doc.filename)
         
     except Exception as e:
@@ -276,4 +279,28 @@ def delete_document(
         session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete document: {e}")
 
+
     return {"ok": True}
+
+@router.post("/sync-vectors", dependencies=[Depends(require_roles(Role.ADMIN))])
+async def sync_vectors_endpoint(
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    """
+    Trigger manual synchronization of Qdrant vectors from SQL chunks.
+    This runs in the background.
+    """
+    from ..vectorstore import sync_all_vectors_from_sql
+    
+    def _run_sync():
+        print(f"--- Starting Manual Vector Sync (User: {user.email}) ---")
+        try:
+            sync_all_vectors_from_sql(batch_size=50)
+            print(f"--- Manual Sync Complete (User: {user.email}) ---")
+        except Exception as e:
+            print(f"Error during manual sync: {e}")
+
+    background_tasks.add_task(_run_sync)
+    return {"status": "ok", "message": "Vector synchronization started in background."}

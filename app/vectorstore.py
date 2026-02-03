@@ -124,3 +124,86 @@ def delete_vectors(doc_id: str):
         # Silently fail - vectors may not exist
         pass
 
+
+# ---------- Management ----------
+def get_collection_count() -> int:
+    """Get total number of vectors in the collection."""
+    try:
+        return client.count(COLLECTION_NAME).count
+    except Exception:
+        return 0
+
+def sync_all_vectors_from_sql(batch_size: int = 50, log_func=print):
+    """
+    Synchronize all vectors from SQL chunks to Qdrant.
+    """
+    from .db import engine
+    from sqlmodel import Session, select
+    from sqlalchemy import func
+    from .models import Chunk, Document
+    from .embedding import embed_texts
+    
+    log_func("--- Starting Vector Synchronization ---")
+    
+    # Check if we need to sync
+    with Session(engine) as session:
+        # Check counts
+        total_chunks = session.exec(select(func.count()).select_from(Chunk)).one()
+        
+        if total_chunks == 0:
+            log_func("No chunks in SQL to sync.")
+            return
+
+        log_func("Verifying vector store consistency...")
+
+        ensure_collection()
+        
+        # Paginate to avoid OOM
+        offset = 0
+        limit = batch_size
+        count_synced = 0
+        
+        while offset < total_chunks:
+            # log_func(f"Processing batch...") # Optional: minimize noise further
+            # Fetch batch from SQL
+            # Join with Document to get metadata in one query if possible, or just lazy load
+            # Lazy loading in loop is N+1 but low memory. 
+            # Eager loading (select(Chunk, Document)) is better for DB performance.
+            # Let's keep it simple: Fetch Chunks, then metadata.
+            
+            chunks = session.exec(select(Chunk).offset(offset).limit(limit)).all()
+            if not chunks:
+                break
+                
+            _process_sync_batch(chunks, session)
+            
+            count_synced += len(chunks)
+            offset += limit
+            
+    log_func("--- Vector Synchronization Check Complete. ---")
+
+def _process_sync_batch(chunk_objs, session):
+    from .models import Document
+    from sqlmodel import select
+    from .embedding import embed_texts
+    
+    texts = [c.text for c in chunk_objs]
+    vectors = embed_texts(texts)
+    points = []
+    
+    for i, chunk_obj in enumerate(chunk_objs):
+        # We need doc metadata
+        doc = session.exec(select(Document).where(Document.doc_id == chunk_obj.doc_id)).first()
+        if doc:
+            payload = {
+                "doc_id": chunk_obj.doc_id,
+                "chunk_index": chunk_obj.chunk_index,
+                "text": chunk_obj.text,
+                "filename": doc.filename,
+                "org_id": doc.org_id,
+            }
+            points.append((chunk_obj.chunk_id, vectors[i], payload))
+    
+    if points:
+        upsert_points(points)
+

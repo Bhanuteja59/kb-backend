@@ -96,6 +96,7 @@ def complete_google_onboarding(payload: OnboardingRequest, session: Session = De
         is_active=True,
         org_id=org.org_id,
         auth_provider="google",
+        password_hash="oauth_user_no_password",
     )
     session.add(user)
     session.commit()

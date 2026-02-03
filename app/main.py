@@ -38,10 +38,19 @@ async def startup():
     async def init_qdrant_background():
         try:
             from .vectorstore import ensure_collection as init_collection
+            from .vectorstore import sync_all_vectors_from_sql
             from .embedding import get_embedding_dimension
+            
             dim = get_embedding_dimension()
             init_collection(vector_size=dim)
+            
+            # Auto-Recovery: Sync if vectors are missing
+            print("Running startup vector check...")
+            # Run sync in threadpool to avoid blocking event loop
+            await asyncio.to_thread(sync_all_vectors_from_sql, batch_size=50, log_func=print)
+            
         except Exception as e:
+            print(f"Startup background task failed: {e}")
             # Log error but continue - vector features may be unavailable
             pass
     
