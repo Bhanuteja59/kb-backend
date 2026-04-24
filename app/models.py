@@ -1,12 +1,7 @@
 from sqlmodel import SQLModel, Field
+from sqlalchemy import Column, Text
 from typing import Optional
 from datetime import datetime
-from enum import Enum
-
-class Role(str, Enum):
-    ADMIN = "admin"
-    MANAGER = "manager"
-    USER = "user"
 
 class Organization(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -20,7 +15,6 @@ class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
     full_name: str
-    role: Role = Field(default=Role.USER, index=True)
     is_active: bool = Field(default=True, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     org_id: str = Field(index=True)
@@ -33,14 +27,12 @@ class Document(SQLModel, table=True):
     filename: str
     file_type: str
     source: str
-    source_id: Optional[str] = Field(default=None, index=True) # e.g. Google Drive File ID
+    source_id: Optional[str] = Field(default=None, index=True)
     size_bytes: int
     uploaded_by: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    status: str = Field(default="indexed")  # indexed|error
+    status: str = Field(default="indexed")
     error_message: Optional[str] = None
-
-    # v2: soft delete
     is_deleted: bool = Field(default=False, index=True)
     deleted_at: Optional[datetime] = None
     deleted_by: Optional[str] = None
@@ -57,7 +49,7 @@ class Chunk(SQLModel, table=True):
 class AuditEvent(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     actor_email: str = Field(index=True)
-    action: str = Field(index=True)  # login|upload|delete|restore|user_create|user_create
+    action: str = Field(index=True)
     target: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     details: Optional[str] = None

@@ -7,12 +7,11 @@ ALGORITHM = settings.jwt_algorithm
 
 class TokenData(BaseModel):
     sub: str
-    role: str
     exp: int
 
-def create_access_token(subject: str, role: str, expires_minutes: int = 60*24) -> str:
+def create_access_token(subject: str, expires_minutes: int = 60 * 24) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
-    payload = {"sub": subject, "role": role, "exp": int(expire.timestamp())}
+    payload = {"sub": subject, "exp": int(expire.timestamp())}
     return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
 
 def decode_token(token: str) -> TokenData:

@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 from typing import Optional, List
-from .models import Role
 
 class LoginResponse(BaseModel):
     access_token: str
@@ -9,7 +8,6 @@ class LoginResponse(BaseModel):
 class MeResponse(BaseModel):
     email: str
     full_name: str
-    role: Role
     org_id: Optional[str] = None
     org_name: Optional[str] = None
     org_slug: Optional[str] = None
@@ -23,16 +21,13 @@ class MeResponse(BaseModel):
 class UserCreate(BaseModel):
     email: str
     full_name: str
-    role: Role
 
 class OnboardingRequest(BaseModel):
     token: str
     organization_name: str
-    role: Role
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
-    role: Optional[Role] = None
     is_active: Optional[bool] = None
 
 class UserProfileUpdate(BaseModel):

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select, func
 from ..db import get_session
-from ..models import User, Document, Chunk, ChatLog, AuditEvent
+from ..models import User, Document, Chunk, AuditEvent
 from ..deps import get_current_user
 from pydantic import BaseModel
 from typing import List, Optional
@@ -61,12 +61,8 @@ def get_dashboard_stats(
         .where(Document.org_id == org_id)
     ).one()
 
-    # 3. Avg Response Time
-    avg_response = session.exec(
-        select(func.avg(ChatLog.response_time_ms))
-        .where(ChatLog.org_id == org_id)
-    ).one()
-    avg_response_ms = int(avg_response) if avg_response else 0
+    # 3. Avg Response Time (ChatLog not implemented yet)
+    avg_response_ms = 0
 
     # 4. Recent Activity (From AuditEvent + ChatLog + Document)
     # Merging streams is complex, let's just pick Audit Events for now + Maybe Chats

@@ -3,7 +3,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session, select
 from .db import get_session
 from .security import decode_token
-from .models import User, Role
+from .models import User
 from typing import Optional
 
 bearer = HTTPBearer(auto_error=False)
@@ -37,10 +37,3 @@ def get_current_user_optional(
     if not user or not user.is_active:
         return None
     return user
-
-def require_roles(*roles: Role):
-    def _guard(user: User = Depends(get_current_user)) -> User:
-        if user.role not in roles:
-            raise HTTPException(status_code=403, detail="Insufficient permissions")
-        return user
-    return _guard
