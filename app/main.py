@@ -10,7 +10,8 @@ try:
 except Exception:
     pass
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
@@ -19,7 +20,7 @@ from .db import create_db_and_tables
 from .vectorstore import ensure_collection
 
 # Import Routers
-from .routers import auth, users, documents, audit, chat, public
+from .routers import auth, documents, chat, public
 
 app = FastAPI(title="KB RAG API", version="2.0.0")
 
@@ -57,23 +58,71 @@ async def startup():
     asyncio.create_task(init_qdrant_background())
 
 # ---------- CORS ----------
+origins = settings.cors_origin_list
+print(f"DEBUG: Allowed CORS origins: {origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,  # Loaded from CORS_ORIGINS env var
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------- Global Exception Handler ----------
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    error_msg = str(exc)
+    print(f"CRITICAL ERROR: {error_msg}")
+    traceback.print_exc()
+    
+    with open("error_dump.txt", "w") as f:
+        f.write(traceback.format_exc())
+    
+    # Manually inject CORS headers so the browser can read the error response.
+    # FastAPI's CORSMiddleware does NOT wrap exception handler responses,
+    # so a 500 crash would appear as a CORS error to the browser.
+    origin = request.headers.get("origin", "")
+    allowed = settings.cors_origin_list
+    cors_origin = origin if origin in allowed else (allowed[0] if allowed else "*")
+
+    return JSONResponse(
+        status_code=500,
+        headers={
+            "Access-Control-Allow-Origin": cors_origin,
+            "Access-Control-Allow-Credentials": "true",
+        },
+        content={
+            "detail": {
+                "message": error_msg,
+                "type": type(exc).__name__
+            }
+        }
+    )
 
 # ---------- Health ----------
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
+@app.get("/test_db")
+def test_db():
+    from .db import get_session
+    from .models import User
+    from sqlmodel import select
+    import traceback
+    try:
+        session = next(get_session())
+        user = session.exec(select(User).limit(1)).first()
+        return {"status": "ok", "user": user}
+    except Exception as e:
+        return {"status": "error", "traceback": traceback.format_exc()}
+
+
+
 # ---------- Routers ----------
 app.include_router(auth.router)
-app.include_router(users.router)
 app.include_router(documents.router)
-app.include_router(audit.router)
 app.include_router(chat.router)
 app.include_router(public.router)

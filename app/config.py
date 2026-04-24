@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, field_validator
 from typing import List, Optional
 
 
@@ -29,11 +29,26 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(
         default=[
             "http://localhost:3000",
-            "https://kb-frontend-plum.vercel.app"
+            "http://localhost:3001",
+            "https://kb-frontend-plum.vercel.app",
         ],
         alias="CORS_ORIGINS",
-        validation_alias="CORS_ORIGINS" 
     )
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v):
+        if isinstance(v, str):
+            import json
+            try:
+                # Try JSON list first
+                if v.startswith("["):
+                    return json.loads(v)
+                # Fallback to comma-separated
+                return [i.strip() for i in v.split(",")]
+            except Exception:
+                return [v]
+        return v
 
     # ---------- Embeddings ----------
     # FastEmbed uses BAAI/bge-small-en-v1.5 by default in embedding.py
@@ -49,6 +64,14 @@ class Settings(BaseSettings):
     # ---------- Google Gemini ----------
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     
+
+    # ---------- Mail (SMTP) ----------
+    mail_username: Optional[str] = Field(default=None, alias="MAIL_USERNAME")
+    mail_password: Optional[str] = Field(default=None, alias="MAIL_PASSWORD")
+    mail_from: Optional[str] = Field(default=None, alias="MAIL_FROM")
+    mail_port: int = Field(default=587, alias="MAIL_PORT")
+    mail_server: Optional[str] = Field(default=None, alias="MAIL_SERVER")
+    mail_from_name: str = Field(default="KB RAG Platform", alias="MAIL_FROM_NAME")
 
     # ---------- Frontend ----------
     frontend_url: str = Field(default="https://kb-frontend-plum.vercel.app", alias="FRONTEND_URL")

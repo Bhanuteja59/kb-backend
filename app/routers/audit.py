@@ -3,13 +3,13 @@ from sqlmodel import Session, select
 from typing import Optional
 
 from ..db import get_session
-from ..models import AuditEvent, User, Role
-from ..deps import require_roles, get_current_user
+from ..models import AuditEvent, User
+from ..deps import get_current_user
 from ..schemas import AuditOut
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 
-@router.get("", response_model=list[AuditOut], dependencies=[Depends(require_roles(Role.ADMIN, Role.MANAGER))])
+@router.get("", response_model=list[AuditOut])
 def list_audit(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
@@ -17,8 +17,12 @@ def list_audit(
     action: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
 ):
-    stmt = select(AuditEvent).join(User, AuditEvent.actor_email == User.email).where(User.org_id == user.org_id).order_by(AuditEvent.created_at.desc())
-    
+    stmt = (
+        select(AuditEvent)
+        .join(User, AuditEvent.actor_email == User.email)
+        .where(User.org_id == user.org_id)
+        .order_by(AuditEvent.created_at.desc())
+    )
     if actor_email:
         stmt = stmt.where(AuditEvent.actor_email == actor_email)
     if action:
