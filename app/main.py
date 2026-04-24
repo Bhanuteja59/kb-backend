@@ -39,16 +39,20 @@ async def startup():
     async def init_qdrant_background():
         try:
             from .vectorstore import ensure_collection as init_collection
-            from .vectorstore import sync_all_vectors_from_sql
+            from .vectorstore import sync_all_vectors_from_sql, get_collection_count
             from .embedding import get_embedding_dimension
             
             dim = get_embedding_dimension()
             init_collection(vector_size=dim)
             
-            # Auto-Recovery: Sync if vectors are missing
-            print("Running startup vector check...")
-            # Run sync in threadpool to avoid blocking event loop
-            await asyncio.to_thread(sync_all_vectors_from_sql, batch_size=50, log_func=print)
+            # Only sync if the collection is empty to avoid cold-start timeouts
+            qdrant_count = get_collection_count()
+            if qdrant_count == 0:
+                print("Vector store is empty. Running startup vector check...")
+                # Run sync in threadpool to avoid blocking event loop
+                await asyncio.to_thread(sync_all_vectors_from_sql, batch_size=50, log_func=print)
+            else:
+                print(f"Vector store already contains {qdrant_count} vectors. Skipping sync.")
             
         except Exception as e:
             print(f"Startup background task failed: {e}")
@@ -77,8 +81,13 @@ async def global_exception_handler(request: Request, exc: Exception):
     print(f"CRITICAL ERROR: {error_msg}")
     traceback.print_exc()
     
-    with open("error_dump.txt", "w") as f:
-        f.write(traceback.format_exc())
+    # On Vercel, write to /tmp or just print
+    dump_path = "/tmp/error_dump.txt" if "VERCEL" in os.environ else "error_dump.txt"
+    try:
+        with open(dump_path, "w") as f:
+            f.write(traceback.format_exc())
+    except Exception:
+        pass
     
     # Manually inject CORS headers so the browser can read the error response.
     # FastAPI's CORSMiddleware does NOT wrap exception handler responses,

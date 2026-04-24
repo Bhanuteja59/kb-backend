@@ -10,10 +10,21 @@ _model = None
 def get_model() -> TextEmbedding:
     global _model
     if _model is None:
+        import os
+        # Vercel has a read-only filesystem except for /tmp
+        cache_dir = "/tmp/fastembed_cache" if "VERCEL" in os.environ else None
+        if cache_dir and not os.path.exists(cache_dir):
+            try:
+                os.makedirs(cache_dir, exist_ok=True)
+            except Exception:
+                pass
+        
         # Use a lightweight, high-performance model
-        # fastembed supports "BAAI/bge-small-en-v1.5" or "sentence-transformers/all-MiniLM-L6-v2"
-        # Using "sentence-transformers/all-MiniLM-L6-v2" for compatibility with previous Qdrant vectors
-        _model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        # Using "sentence-transformers/all-MiniLM-L6-v2" for compatibility
+        _model = TextEmbedding(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            cache_dir=cache_dir
+        )
     return _model
 
 def embed_texts(texts: list[str]) -> list[list[float]]:

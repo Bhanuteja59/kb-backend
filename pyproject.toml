@@ -8,6 +8,8 @@ dependencies = [
   "pydantic==2.10.3",
   "pydantic-settings==2.6.1",
   "sqlmodel==0.0.22",
+  "psycopg2-binary",
+  "pg8000==1.31.2",
   "asyncpg==0.30.0",
   "python-multipart==0.0.12",
   "python-jose==3.3.0",
