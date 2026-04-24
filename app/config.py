@@ -13,6 +13,24 @@ class Settings(BaseSettings):
     # ---------- Core infrastructure ----------
     database_url: Optional[str] = Field(default=None, alias="DATABASE_URL")
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def validate_database_url(cls, v: Optional[str]) -> Optional[str]:
+        if not v:
+            return v
+        
+        # SQLModel/SQLAlchemy requires 'postgresql://' instead of 'postgres://'
+        if v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql://", 1)
+        
+        # For Vercel deployments, if no driver is specified, use pg8000 (pure python)
+        # to avoid 'ModuleNotFoundError: No module named psycopg2'
+        if "VERCEL" in os.environ or "VERCEL_ENV" in os.environ:
+            if v.startswith("postgresql://") and "+pg8000" not in v:
+                v = v.replace("postgresql://", "postgresql+pg8000://", 1)
+        
+        return v
+
     qdrant_url: str = Field(alias="QDRANT_URL")
     qdrant_api_key: Optional[str] = Field(default=None, alias="QDRANT_API_KEY")
     qdrant_collection: str = Field(default="documents_v2", alias="QDRANT_COLLECTION")
