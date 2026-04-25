@@ -111,6 +111,10 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 # ---------- Health ----------
+@app.get("/")
+def read_root():
+    return {"message": "KB RAG API is running. Visit /docs for documentation."}
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
