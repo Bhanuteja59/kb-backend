@@ -5,7 +5,7 @@ from typing import Optional
 from ..db import get_session
 from ..models import User, Organization, Chunk, Document
 from ..deps import get_current_user_optional
-from ..schemas import ChatRequest, ChatResponse, Citation
+from ..schemas import ChatRequest, ChatResponse
 from ..embedding import embed_query
 from ..vectorstore import search as vs_search
 from ..llm import generate_answer
@@ -34,13 +34,10 @@ async def rag_chat(
     qv = embed_query(body.query)
     hits = vs_search(qv, top_k=body.top_k, filters={"org_id": org_id})
     
-    if not hits:
-        ids = [] 
-    else:
-        ids = [str(h.id) for h in hits]
+    score_map = {str(h.id): h.score for h in hits} if hits else {}
+    ids = list(score_map.keys())
 
-    # 3. Retrieve Content (Simple Query)
-    # We just fetch the text content. simpler than mapping objects.
+    # 3. Retrieve Content
     contexts = []
     if ids:
         chunks = session.exec(
@@ -49,16 +46,13 @@ async def rag_chat(
             .where(Chunk.doc_id == Document.doc_id)
             .where(Document.org_id == org_id)
         ).all()
-        
-        # Format for LLM
+
         for c, d in chunks:
             contexts.append({
                 "text": c.text,
                 "filename": d.filename,
-                "score": 0.0 # Placeholder
+                "score": score_map.get(c.chunk_id, 0.0),
             })
-    else:
-        pass # No hits found in Qdrant.
 
     # 4. Generate Answer
     answer = await generate_answer(body.query, contexts)

@@ -31,7 +31,12 @@ async def google_callback(code: str, session: Session = Depends(get_session)):
     try:
         user_info = await get_google_user_info(code, uri)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Google Auth failed: {str(e)}")
+        # invalid_grant = code already used or expired (e.g. user refreshed, or cold-start
+        # timeout caused Vercel to retry the request). Send user back to login gracefully.
+        error_str = str(e).lower()
+        if "invalid_grant" in error_str or "bad request" in error_str:
+            return RedirectResponse(f"{settings.frontend_url}/login?error=session_expired")
+        return RedirectResponse(f"{settings.frontend_url}/login?error=auth_failed")
 
     email = user_info.get("email")
     name = user_info.get("name")

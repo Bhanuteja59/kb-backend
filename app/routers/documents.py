@@ -30,6 +30,7 @@ async def ingest_file(
     current_count = session.exec(
         select(func.count()).select_from(Document)
         .where(Document.org_id == user.org_id)
+        .where(Document.is_deleted == False)  # noqa
     ).one()
 
     org = session.exec(select(Organization).where(Organization.org_id == user.org_id)).first()
@@ -150,6 +151,7 @@ def get_document_details(
         select(Document)
         .where(Document.doc_id == doc_id)
         .where(Document.org_id == user.org_id)
+        .where(Document.is_deleted == False)  # noqa
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -185,7 +187,10 @@ def list_documents(
     session: Session = Depends(get_session),
 ):
     docs = session.exec(
-        select(Document).where(Document.org_id == user.org_id).order_by(Document.created_at.desc())
+        select(Document)
+        .where(Document.org_id == user.org_id)
+        .where(Document.is_deleted == False)  # noqa
+        .order_by(Document.created_at.desc())
     ).all()
     return [
         DocumentOut(
