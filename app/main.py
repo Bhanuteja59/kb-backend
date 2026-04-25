@@ -27,12 +27,13 @@ app = FastAPI(title="KB RAG API", version="2.0.0")
 @app.on_event("startup")
 async def startup():
     """Initialize database and Qdrant on startup."""
-    try:
-        # Initialize database tables
-        create_db_and_tables()
-    except Exception as e:
-        # Log error but continue - app can still serve health checks
-        pass
+    # Skip on Vercel/production — tables already exist, this DB round-trip
+    # on every cold start consumes 3–5 s and causes OAuth code expiry issues.
+    if os.getenv("ENV", "dev") == "dev":
+        try:
+            create_db_and_tables()
+        except Exception:
+            pass
     
     # Initialize Qdrant in background (non-blocking)
     import asyncio
