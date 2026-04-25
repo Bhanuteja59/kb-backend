@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 from typing import List, Optional
+import os
 
 
 class Settings(BaseSettings):
@@ -11,7 +12,7 @@ class Settings(BaseSettings):
     )
 
     # ---------- Core infrastructure ----------
-    database_url: Optional[str] = Field(default=None, alias="DATABASE_URL")
+    database_url: Optional[str] = Field(default=None, validation_alias="DATABASE_URL")
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -31,16 +32,16 @@ class Settings(BaseSettings):
         
         return v
 
-    qdrant_url: str = Field(alias="QDRANT_URL")
-    qdrant_api_key: Optional[str] = Field(default=None, alias="QDRANT_API_KEY")
-    qdrant_collection: str = Field(default="documents_v2", alias="QDRANT_COLLECTION")
+    qdrant_url: Optional[str] = Field(default=None, validation_alias="QDRANT_URL")
+    qdrant_api_key: Optional[str] = Field(default=None, validation_alias="QDRANT_API_KEY")
+    qdrant_collection: str = Field(default="documents_v2", validation_alias="QDRANT_COLLECTION")
 
     # ---------- Auth / Security ----------
-    jwt_secret: str = Field(alias="JWT_SECRET_KEY") # Changed from JWT_SECRET to match .env
-    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_secret: str = Field(default="fallback-secret-change-me-in-prod", validation_alias="JWT_SECRET_KEY") 
+    jwt_algorithm: str = Field(default="HS256", validation_alias="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(
         default=30,
-        alias="ACCESS_TOKEN_EXPIRE_MINUTES",
+        validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES",
     )
 
     # ---------- CORS ----------
@@ -50,7 +51,7 @@ class Settings(BaseSettings):
             "http://localhost:3001",
             "https://kb-frontend-plum.vercel.app",
         ],
-        alias="CORS_ORIGINS",
+        validation_alias="CORS_ORIGINS",
     )
 
     @field_validator("cors_origins", mode="before")
@@ -72,27 +73,27 @@ class Settings(BaseSettings):
     # FastEmbed uses BAAI/bge-small-en-v1.5 by default in embedding.py
     
     # ---------- LLM Providers ----------
-    groq_api_key: Optional[str] = Field(default=None, alias="GROQ_API_KEY")
+    groq_api_key: Optional[str] = Field(default=None, validation_alias="GROQ_API_KEY")
 
     # ---------- Google Auth ----------
-    google_client_id: Optional[str] = Field(default=None, alias="GOOGLE_CLIENT_ID")
-    google_client_secret: Optional[str] = Field(default=None, alias="GOOGLE_CLIENT_SECRET")
-    google_redirect_uri: Optional[str] = Field(default=None, alias="GOOGLE_REDIRECT_URI")
+    google_client_id: Optional[str] = Field(default=None, validation_alias="GOOGLE_CLIENT_ID")
+    google_client_secret: Optional[str] = Field(default=None, validation_alias="GOOGLE_CLIENT_SECRET")
+    google_redirect_uri: Optional[str] = Field(default=None, validation_alias="GOOGLE_REDIRECT_URI")
     
     # ---------- Google Gemini ----------
-    google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
+    google_api_key: Optional[str] = Field(default=None, validation_alias="GOOGLE_API_KEY")
     
 
     # ---------- Mail (SMTP) ----------
-    mail_username: Optional[str] = Field(default=None, alias="MAIL_USERNAME")
-    mail_password: Optional[str] = Field(default=None, alias="MAIL_PASSWORD")
-    mail_from: Optional[str] = Field(default=None, alias="MAIL_FROM")
-    mail_port: int = Field(default=587, alias="MAIL_PORT")
-    mail_server: Optional[str] = Field(default=None, alias="MAIL_SERVER")
-    mail_from_name: str = Field(default="KB RAG Platform", alias="MAIL_FROM_NAME")
+    mail_username: Optional[str] = Field(default=None, validation_alias="MAIL_USERNAME")
+    mail_password: Optional[str] = Field(default=None, validation_alias="MAIL_PASSWORD")
+    mail_from: Optional[str] = Field(default=None, validation_alias="MAIL_FROM")
+    mail_port: int = Field(default=587, validation_alias="MAIL_PORT")
+    mail_server: Optional[str] = Field(default=None, validation_alias="MAIL_SERVER")
+    mail_from_name: str = Field(default="KB RAG Platform", validation_alias="MAIL_FROM_NAME")
 
     # ---------- Frontend ----------
-    frontend_url: str = Field(default="https://kb-frontend-plum.vercel.app", alias="FRONTEND_URL")
+    frontend_url: str = Field(default="https://kb-frontend-plum.vercel.app", validation_alias="FRONTEND_URL")
 
     # ---------- Backward-compatible uppercase access ----------
     @property

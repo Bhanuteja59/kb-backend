@@ -9,10 +9,20 @@ from qdrant_client.models import (
 from .config import settings
 
 # ---------- Client ----------
-client = QdrantClient(
-    url=settings.QDRANT_URL,
-    api_key=settings.QDRANT_API_KEY,
-)
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        url = settings.QDRANT_URL
+        if not url:
+            # We allow it to be None during import but fail when used
+            raise ValueError("QDRANT_URL is not set. Please configure it in your environment variables.")
+        _client = QdrantClient(
+            url=url,
+            api_key=settings.QDRANT_API_KEY,
+        )
+    return _client
 
 COLLECTION_NAME = settings.qdrant_collection
 
@@ -23,9 +33,9 @@ def ensure_collection(vector_size: int = 384):
     Ensure Qdrant collection exists with correct vector dimensions.
     Default: 384 dimensions for all-MiniLM-L6-v2 model.
     """
-    collections = client.get_collections().collections
+    collections = get_client().get_collections().collections
     if not any(c.name == COLLECTION_NAME for c in collections):
-        client.create_collection(
+        get_client().create_collection(
             collection_name=COLLECTION_NAME,
             vectors_config=VectorParams(
                 size=vector_size,
@@ -36,7 +46,7 @@ def ensure_collection(vector_size: int = 384):
     # Create indices for fast filtering
     for field in ["org_id", "doc_id", "filename", "chunk_index"]:
         try:
-            client.create_payload_index(
+            get_client().create_payload_index(
                 collection_name=COLLECTION_NAME,
                 field_name=field,
                 field_schema="keyword" if field != "chunk_index" else "integer",
@@ -53,7 +63,7 @@ def upsert_points(
     """
     points: [(id, vector, payload), ...]
     """
-    client.upsert(
+    get_client().upsert(
         collection_name=COLLECTION_NAME,
         points=[
             PointStruct(
@@ -92,7 +102,7 @@ def search(
         )
 
     try:
-        return client.search(
+        return get_client().search(
             collection_name=COLLECTION_NAME,
             query_vector=query_vector,
             limit=top_k,
@@ -109,7 +119,7 @@ def delete_vectors(doc_id: str):
     """
     try:
         from qdrant_client.models import Filter, FieldCondition, MatchValue
-        client.delete(
+        get_client().delete(
             collection_name=COLLECTION_NAME,
             points_selector=Filter(
                 must=[
@@ -129,7 +139,7 @@ def delete_vectors(doc_id: str):
 def get_collection_count() -> int:
     """Get total number of vectors in the collection."""
     try:
-        return client.count(COLLECTION_NAME).count
+        return get_client().count(COLLECTION_NAME).count
     except Exception:
         return 0
 
@@ -137,7 +147,7 @@ def sync_all_vectors_from_sql(batch_size: int = 50, log_func=print):
     """
     Synchronize all vectors from SQL chunks to Qdrant.
     """
-    from .db import engine
+    from .db import get_engine
     from sqlmodel import Session, select
     from sqlalchemy import func
     from .models import Chunk, Document
@@ -145,6 +155,7 @@ def sync_all_vectors_from_sql(batch_size: int = 50, log_func=print):
     
     log_func("--- Starting Vector Synchronization ---")
     
+    engine = get_engine()
     # Check if we need to sync
     with Session(engine) as session:
         # Check counts
