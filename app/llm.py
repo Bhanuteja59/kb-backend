@@ -31,7 +31,8 @@ async def generate_answer(question: str, contexts: List[Dict]) -> str:
         return "Error: GROQ_API_KEY not configured. Please add it to your .env file."
 
     try:
-        return _groq_answer(question, contexts)
+        import asyncio
+        return await asyncio.to_thread(_groq_answer, question, contexts)
     except Exception as e:
         return f"Error generating response: {str(e)}"
 

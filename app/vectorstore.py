@@ -5,6 +5,8 @@ from qdrant_client.models import (
     Distance,
     PointStruct,
     Filter,
+    FieldCondition,
+    MatchValue,
 )
 from .config import settings
 
@@ -93,10 +95,7 @@ def search(
     if filters:
         qdrant_filter = Filter(
             must=[
-                {
-                    "key": k,
-                    "match": {"value": v},
-                }
+                FieldCondition(key=k, match=MatchValue(value=v))
                 for k, v in filters.items()
             ]
         )

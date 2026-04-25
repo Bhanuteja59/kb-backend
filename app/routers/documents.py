@@ -57,10 +57,10 @@ async def ingest_file(
         limit_mb = int(max_size_bytes / (1024 * 1024))
         raise HTTPException(status_code=413, detail=f"File too large. Your plan limit is {limit_mb}MB.")
 
-    valid_extensions = {".pdf", ".doc", ".docx"}
+    valid_extensions = {".pdf", ".docx"}
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in valid_extensions:
-        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and Word documents are allowed.")
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and DOCX files are supported.")
 
     text, file_type = await asyncio.to_thread(extract_text, file.filename, content)
 

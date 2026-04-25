@@ -4,8 +4,8 @@ from ..db import get_session
 from ..models import User, Document, Chunk, AuditEvent
 from ..deps import get_current_user
 from pydantic import BaseModel
-from typing import List, Optional
-from datetime import datetime
+from typing import List
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -24,7 +24,7 @@ class DashboardStats(BaseModel):
     recent_activity: List[ActivityItem]
 
 def get_time_ago(dt: datetime) -> str:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     diff = now - dt
     seconds = diff.total_seconds()
     if seconds < 60: return "Just now"

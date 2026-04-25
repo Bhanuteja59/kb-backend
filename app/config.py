@@ -19,17 +19,27 @@ class Settings(BaseSettings):
     def validate_database_url(cls, v: Optional[str]) -> Optional[str]:
         if not v:
             return v
-        
-        # SQLModel/SQLAlchemy requires 'postgresql://' instead of 'postgres://'
+
         if v.startswith("postgres://"):
             v = v.replace("postgres://", "postgresql://", 1)
-        
-        # For Vercel deployments, if no driver is specified, use pg8000 (pure python)
-        # to avoid 'ModuleNotFoundError: No module named psycopg2'
+
+        # On Vercel use pg8000 (pure Python) — psycopg2 native extensions are unavailable
         if "VERCEL" in os.environ or "VERCEL_ENV" in os.environ:
             if v.startswith("postgresql://") and "+pg8000" not in v:
                 v = v.replace("postgresql://", "postgresql+pg8000://", 1)
-        
+
+            # pg8000 does not accept sslmode or channel_binding in the URL.
+            # Strip them and use ssl=true (which pg8000 does support).
+            from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+            parsed = urlparse(v)
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            had_ssl = params.pop("sslmode", None)
+            params.pop("channel_binding", None)
+            if had_ssl and had_ssl[0] in ("require", "verify-ca", "verify-full"):
+                params["ssl"] = ["true"]
+            new_query = urlencode({k: vals[0] for k, vals in params.items()})
+            v = urlunparse(parsed._replace(query=new_query))
+
         return v
 
     qdrant_url: Optional[str] = Field(default=None, validation_alias="QDRANT_URL")

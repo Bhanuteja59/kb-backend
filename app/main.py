@@ -20,7 +20,7 @@ from .db import create_db_and_tables
 from .vectorstore import ensure_collection
 
 # Import Routers
-from .routers import auth, documents, chat, public
+from .routers import auth, documents, chat, public, users, analytics, audit
 
 app = FastAPI(title="KB RAG API", version="2.0.0")
 
@@ -63,7 +63,6 @@ async def startup():
 
 # ---------- CORS ----------
 origins = settings.cors_origin_list
-print(f"DEBUG: Allowed CORS origins: {origins}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -139,3 +138,6 @@ app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(chat.router)
 app.include_router(public.router)
+app.include_router(users.router)
+app.include_router(analytics.router)
+app.include_router(audit.router)
