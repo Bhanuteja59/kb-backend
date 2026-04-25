@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select, func
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from ..db import get_session
@@ -62,7 +62,7 @@ def complete_google_onboarding(payload: OnboardingRequest, session: Session = De
     import random
     base_slug = payload.organization_name.lower().replace(" ", "-")
     random_suffix = random.randint(1000, 9999)
-    slug = f"{base_slug}-{int(datetime.utcnow().timestamp())}-{random_suffix}"
+    slug = f"{base_slug}-{int(datetime.now(timezone.utc).timestamp())}-{random_suffix}"
     org_id = str(uuid.uuid4())
 
     org = Organization(org_id=org_id, name=payload.organization_name, slug=slug)

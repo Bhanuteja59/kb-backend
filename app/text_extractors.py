@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Tuple
 import io
+import os
 
 def extract_text(filename: str, content: bytes) -> Tuple[str, str]:
     lower = filename.lower()
@@ -19,4 +20,4 @@ def extract_text(filename: str, content: bytes) -> Tuple[str, str]:
         # Use built-in csv to be lightweight
         text = content.decode("utf-8", errors="ignore")
         return text, "csv"
-    return content.decode("utf-8", errors="ignore"), "unknown"
+    raise ValueError(f"Unsupported file type: '{os.path.splitext(filename)[1]}'. Only PDF and DOCX are supported.")
