@@ -99,8 +99,8 @@ def chunk_text_tokens(text: str, chunk_tokens: int = 500, overlap_tokens: int = 
         # Move forward with overlap to prevent context loss
         start = end - overlap
         
-        # Safety: prevent infinite loop
-        if start <= 0 or start >= end:
+        # Safety: prevent infinite loop if overlap >= chunk_size
+        if start >= end:
             break
     
     return chunks

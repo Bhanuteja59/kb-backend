@@ -9,8 +9,9 @@ class TokenData(BaseModel):
     sub: str
     exp: int
 
-def create_access_token(subject: str, expires_minutes: int = 60 * 24) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+def create_access_token(subject: str, expires_minutes: int | None = None) -> str:
+    minutes = expires_minutes if expires_minutes is not None else settings.access_token_expire_minutes
+    expire = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     payload = {"sub": subject, "exp": int(expire.timestamp())}
     return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
 

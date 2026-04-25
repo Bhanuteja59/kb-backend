@@ -80,12 +80,6 @@ def upsert_points(
 
 # ---------- Search ----------
 from qdrant_client.http.exceptions import UnexpectedResponse
-
-# ... (imports)
-
-# ... (ensure_collection and upsert_points unchanged)
-
-# ---------- Search ----------
 def search(
     query_vector: List[float],
     top_k: int = 5,
@@ -196,14 +190,18 @@ def _process_sync_batch(chunk_objs, session):
     from .models import Document
     from sqlmodel import select
     from .embedding import embed_texts
-    
+
     texts = [c.text for c in chunk_objs]
     vectors = embed_texts(texts)
+
+    # Batch-fetch all documents needed for this batch in one query
+    doc_ids = list({c.doc_id for c in chunk_objs})
+    docs = session.exec(select(Document).where(Document.doc_id.in_(doc_ids))).all()
+    doc_map = {d.doc_id: d for d in docs}
+
     points = []
-    
     for i, chunk_obj in enumerate(chunk_objs):
-        # We need doc metadata
-        doc = session.exec(select(Document).where(Document.doc_id == chunk_obj.doc_id)).first()
+        doc = doc_map.get(chunk_obj.doc_id)
         if doc:
             payload = {
                 "doc_id": chunk_obj.doc_id,
@@ -213,7 +211,7 @@ def _process_sync_batch(chunk_objs, session):
                 "org_id": doc.org_id,
             }
             points.append((chunk_obj.chunk_id, vectors[i], payload))
-    
+
     if points:
         upsert_points(points)
 

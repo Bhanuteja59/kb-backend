@@ -59,6 +59,7 @@ def get_dashboard_stats(
         select(func.count()).select_from(Chunk)
         .join(Document, Chunk.doc_id == Document.doc_id)
         .where(Document.org_id == org_id)
+        .where(Document.is_deleted == False)  # noqa
     ).one()
 
     # 3. Avg Response Time (ChatLog not implemented yet)

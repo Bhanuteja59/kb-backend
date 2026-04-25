@@ -90,10 +90,6 @@ class Settings(BaseSettings):
     google_client_secret: Optional[str] = Field(default=None, validation_alias="GOOGLE_CLIENT_SECRET")
     google_redirect_uri: Optional[str] = Field(default=None, validation_alias="GOOGLE_REDIRECT_URI")
     
-    # ---------- Google Gemini ----------
-    google_api_key: Optional[str] = Field(default=None, validation_alias="GOOGLE_API_KEY")
-    
-
     # ---------- Mail (SMTP) ----------
     mail_username: Optional[str] = Field(default=None, validation_alias="MAIL_USERNAME")
     mail_password: Optional[str] = Field(default=None, validation_alias="MAIL_PASSWORD")
